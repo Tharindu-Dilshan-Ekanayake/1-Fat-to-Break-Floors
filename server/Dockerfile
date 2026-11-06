@@ -1,4 +1,4 @@
-# The Belly Buster game server, as Bloxity Legion runs it. Build from the repo root,
+# The Fat to Break Floor game server, as Bloxity Legion runs it. Build from the repo root,
 # since the server imports the rules shared with the client:
 #   docker build -f server/Dockerfile .
 FROM node:24-alpine

@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { iconUrl } from './icons'
 import StrokeText from './StrokeText'
 
+/** The title's fill: white over the top half, gold below. */
+const TITLE_FILL = 'linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #ffe36b 56%, #ffb21e 100%)'
+
 const TIPS = [
   'Every bite makes you FATTER!',
   'Sit at a training pad table and you eat all by yourself.',
@@ -55,9 +58,15 @@ export function LoadingScreen({ done }) {
         <img src={iconUrl('food')} alt="" width="150" height="150" draggable={false} />
       </div>
 
-      <h1 className="m-0 text-center leading-none" style={{ fontSize: 'clamp(40px, 9vw, 96px)', transform: 'rotate(-3deg)' }}>
-        <StrokeText stroke="0.16em" gradient="linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #ffe36b 56%, #ffb21e 100%)">
-          BELLY BUSTER
+      {/* The title on two lines, each its own outlined text so each gets the whole white-to-gold fill;
+          sized to the height too, so a phone on its side still shows the bar and the tip. */}
+      <h1 className="m-0 text-center leading-none" style={{ fontSize: 'clamp(34px, min(9vw, 12vh), 96px)', transform: 'rotate(-3deg)' }}>
+        <StrokeText stroke="0.16em" gradient={TITLE_FILL} style={{ fontSize: '0.62em' }}>
+          FAT TO
+        </StrokeText>
+        <br />
+        <StrokeText stroke="0.16em" gradient={TITLE_FILL}>
+          BREAK FLOOR
         </StrokeText>
       </h1>
 

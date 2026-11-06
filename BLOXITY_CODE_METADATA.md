@@ -1,5 +1,5 @@
 ---
-gameId: get-fat-to-break-tape
+gameId: 1-fat-to-break-floors
 clientDir: client
 buildCommand: npm run build
 distDir: client/dist
@@ -19,7 +19,7 @@ notApplicable:
   playWithFriends: Hosted on Boxity and joining through its matchmaker, so Boxity's own private rooms seat invited friends together; the game makes no private rooms of its own for CrazyGames' instant join.
 ---
 
-# Belly Buster on Boxity
+# Fat to Break Floor on Boxity
 
 Where each piece of the Boxity integration lives:
 

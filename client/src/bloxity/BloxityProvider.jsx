@@ -43,8 +43,8 @@ function isResetSentinel(equipped) {
  * portal locally) and sign-in could never return, so in development, and only when told
  * nothing, it's handed production's addresses from the one environment helper.
  */
-/** This game on Boxity: Belly Buster. */
-const GAME_SLUG = 'get-fat-to-break-tape'
+/** This game on Boxity: Fat to Break Floor. */
+const GAME_SLUG = '1-fat-to-break-floors'
 
 function initOptions(gameSlug) {
   if (!import.meta.env.DEV || toldEnvironment()) return { gameSlug }
