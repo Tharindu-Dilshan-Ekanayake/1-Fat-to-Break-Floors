@@ -156,7 +156,7 @@ export function InteractPrompt() {
         type="button"
         aria-label="Roll"
         className="pp-btn pp-chunky pp-pulse pointer-events-auto absolute flex touch-none flex-col items-center justify-center rounded-full"
-        style={{ width: 104, height: 104, background: GRADIENTS.greenButton, border: '4px solid #111', right: 96, bottom: 12 }}
+        style={{ width: 104, height: 104, background: GRADIENTS.greenButton, border: '4px solid #111', right: 96, bottom: 'var(--touch-bottom)' }}
         onPointerDown={grab}
         onPointerLeave={letGo}
         onContextMenu={(e) => e.preventDefault()}

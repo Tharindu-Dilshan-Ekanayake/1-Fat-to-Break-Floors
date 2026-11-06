@@ -119,10 +119,11 @@ export function TouchControls() {
             width: RADIUS * 2,
             height: RADIUS * 2,
             opacity: 0.35,
-            left: RADIUS * 2.6,
             // Resting low down, clear of the menu tiles above and the Wins and Fat
-            // in the corner.
-            top: `calc(100% - ${RADIUS * 2.3}px)`,
+            // in the corner - and inside the joystick's own side of the screen, so on a
+            // narrow phone it doesn't sit behind the EAT button.
+            left: `clamp(8px, calc(100% - ${RADIUS * 2 + 8}px), ${RADIUS * 2.6}px)`,
+            top: `calc(100% - ${RADIUS * 2.2}px - var(--safe-bottom))`,
           }}
         >
           <div
@@ -138,7 +139,7 @@ export function TouchControls() {
           type="button"
           aria-label="Eat"
           className="pp-btn pp-chunky pp-pulse absolute z-20 flex touch-none flex-col items-center justify-center rounded-full"
-          style={{ ...roundButton(104, GRADIENTS.goldButton), right: 96, bottom: 12 }}
+          style={{ ...roundButton(104, GRADIENTS.goldButton), right: 96, bottom: 'var(--touch-bottom)' }}
           onPointerDown={(e) => {
             e.preventDefault()
             eat()
@@ -156,7 +157,7 @@ export function TouchControls() {
         type="button"
         aria-label="Jump"
         className="pp-btn pp-chunky absolute z-20 flex touch-none items-center justify-center rounded-full text-white"
-        style={{ ...roundButton(70, GRADIENTS.slate), right: 14, bottom: 14 }}
+        style={{ ...roundButton(70, GRADIENTS.slate), right: 14, bottom: 'calc(var(--touch-bottom) + 2px)' }}
         onPointerDown={(e) => {
           e.preventDefault()
           runtime.input.jump = true
