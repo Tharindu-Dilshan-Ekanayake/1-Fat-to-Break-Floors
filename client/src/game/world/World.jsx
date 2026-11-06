@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { useGame } from '../../store/game'
@@ -7,18 +7,20 @@ import { useQuality } from '../../store/quality'
 import { asToyInstance, BlockSet, disposeBlocks, PropBuilder } from '../blocks'
 import { glowTime } from '../glow'
 import { createToyMaterial, sharedMaterials, toyTime } from '../materials'
+import { stage } from '../stage/stageControl'
 import { useAfterPlayable } from '../useAfterPlayable'
 import { buildNeonTrims, buildRunway, createGroundGeometry, createGroundMap } from './ground'
+import { buildCandyDecor } from './candy'
 import { buildEggStands } from './eggs'
-import { buildFoodCourts } from './foodCourts'
 import { buildGarden } from './garden'
 import { buildLawnCurbs } from './lawns'
 import { lobbyPalette } from './palette'
 import { buildPortalFrame } from './portalFrame'
-import { buildPushZone } from './pushZone'
 import { createPaintedSigns } from './signs'
+import { buildStageGate } from './stageGate'
 import { buildFoodHut, buildStands, buildStatue, buildTownSquare } from './structures'
 import { buildTerrain } from './terrain'
+import { buildTrainingPads } from './trainingPads'
 import { buildWaterfall } from './waterfall'
 
 /** Merges `extra` into the props mesh's geometry (one mesh, one draw call), freeing both old ones. */
@@ -32,14 +34,14 @@ function addToProps(mesh, extra) {
 }
 
 /**
- * The static lobby, "Snack Town": ground plane, every box (mountains, trees, the Food
- * Courts' restaurants, the food shop's hut, the champion's square, stands, the statue,
- * lawns' kerbs, the runway's chevrons) in one InstancedMesh, and every non-box prop
- * (round plinths and flower beds, the egg stands' wings, the statue's body, the giant
- * foods on the roofs and the hut's counter...) merged into one mesh. Three draw calls
+ * The static lobby, "Snack Town": ground plane, every box (mountains, trees, the
+ * training hall's pads and tables, the STAGE gate and its yard, the food shop's hut, the
+ * champion's square, stands, the statue, lawns' kerbs, the runway's chevrons) in one
+ * InstancedMesh, and every non-box prop (round plinths and flower beds, the egg stands'
+ * wings, the statue's body, the giant foods...) merged into one mesh. Three draw calls
  * for the whole environment.
  *
- * The decoration - the giant foods on the roofs and the hut, the champion's body, the
+ * The decoration - the giant foods by the pads and on the hut, the champion's body, the
  * painted signs - is left until the game's playable (useAfterPlayable) and merged into
  * the props mesh then: it was most of the lobby's build time, and nobody needs it to
  * start playing.
@@ -55,11 +57,15 @@ export function World() {
   const world = useGame((s) => s.profile.world)
   const settled = useAfterPlayable()
   const [signs, setSigns] = useState([])
+  const groupRef = useRef(null)
 
-  // Drives every animated toy-material style (water...).
+  // Drives every animated toy-material style (water...). From room 1 down, the lobby is
+  // out of sight behind floors and ceilings: not drawn at all (a weak phone's biggest
+  // saving down there).
   useFrame((state) => {
     toyTime.value = state.clock.elapsedTime
     glowTime.value = state.clock.elapsedTime
+    if (groupRef.current) groupRef.current.visible = stage.level < 1
   })
 
   useEffect(() => {
@@ -102,11 +108,12 @@ export function World() {
     // Decoration queued for later (see the effect below): `later(builder => ...)`.
     const decorTasks = []
     const decor = { later: (task) => decorTasks.push(task) }
-    buildFoodCourts(set, propBuilder, { detail, palette, decor })
+    buildTrainingPads(set, propBuilder, { detail, decor, palette })
     buildFoodHut(set, propBuilder, { detail, palette, decor })
     buildTownSquare(set, propBuilder, { detail, palette, decor })
     buildGarden(set, propBuilder, { detail, palette })
-    buildPushZone(set, { world })
+    buildStageGate(set, { world })
+    buildCandyDecor(set, propBuilder, { palette })
     buildStands(set)
     buildStatue(set, propBuilder, { palette, decor })
     buildPortalFrame(set)
@@ -149,14 +156,14 @@ export function World() {
   )
 
   return (
-    <>
+    <group ref={groupRef}>
       <mesh geometry={ground.geometry} material={ground.material} receiveShadow={shadows} />
       <primitive object={blocks} castShadow={shadows} receiveShadow={shadows} />
       <primitive object={props} castShadow={shadows} receiveShadow={shadows} />
       {signs.map((sign) => (
         <mesh key={sign.texture.uuid} geometry={sign.geometry} material={sign.material} position={sign.position} rotation={sign.rotation} renderOrder={1} />
       ))}
-    </>
+    </group>
   )
 }
 

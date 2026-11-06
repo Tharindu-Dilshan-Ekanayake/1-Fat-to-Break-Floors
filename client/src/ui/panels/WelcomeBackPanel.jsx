@@ -7,7 +7,7 @@ import { ChunkyButton } from '../hud/parts'
 import { GRADIENTS, u } from '../hud/style'
 import Panel from './Panel'
 
-/** "Keep eating while you're offline!": the Fat your Food Court fed you while you were away. */
+/** "Keep eating while you're offline!": the Fat your Training Pad fed you while you were away. */
 export function WelcomeBackPanel() {
   const data = useGame((s) => s.panelData)
   const closePanel = useGame((s) => s.closePanel)
@@ -16,7 +16,7 @@ export function WelcomeBackPanel() {
     <Panel title="WELCOME BACK!" width={760}>
       <div className="flex flex-col items-center text-center" style={{ gap: u(12) }}>
         <span style={{ fontSize: u(34) }}>
-          <StrokeText stroke={u(7)}>You kept snacking at the Food Court for {formatDuration(data.ms)} while away!</StrokeText>
+          <StrokeText stroke={u(7)}>You kept snacking at the Training Pad for {formatDuration(data.ms)} while away!</StrokeText>
         </span>
         <div className="flex items-center" style={{ gap: u(10), fontSize: u(84) }}>
           <Icon name="fat" size={u(96)} />

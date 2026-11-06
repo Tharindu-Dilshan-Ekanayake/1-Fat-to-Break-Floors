@@ -39,7 +39,10 @@ export const useGame = create((set) => ({
   zone: {
     trainZone: -1,
     trainZoneNear: -1,
-    pushZone: false,
+    /** Through the STAGE gate: in the yard, or on floor 0. */
+    yard: false,
+    /** Down in the stages: the room you're in (-1 in the lobby). */
+    stage: -1,
     /** At the Food Shop's counter (the shop opens). */
     foodShop: false,
     egg: null,
@@ -48,7 +51,7 @@ export const useGame = create((set) => ({
     sphinx: false,
     auras: false,
     potions: false,
-    /** Kept for the HUD's sake: always -1 (there's nothing to take mid-track any more). */
+    /** Kept for the HUD's sake: always -1. */
     climbBoulder: -1,
   },
 
@@ -57,17 +60,17 @@ export const useGame = create((set) => ({
   /** Extra data for the open panel (e.g. which egg the hatch panel is for). */
   panelData: null,
 
-  /** True while you're rolling down the track (the frame-rate state is push in pushControl). */
+  /** Kept for the HUD's sake: always false (down in the stages is `climb`). */
   pushing: false,
   /** True while Boxity shows an ad break: the game stands still. */
   paused: false,
-  /** Down the track: 'roll'; null in the plaza. */
+  /** Down in the stages: 'stage'; null in the lobby (the frame-rate state is `stage` in stageControl). */
   climb: null,
-  /** The big message of the moment down the track: { kind: 'tape' | 'blocked' | 'top', ..., id }. */
+  /** The big message of the moment: { kind: 'floor' | 'wins' | 'hungry', ..., id }. */
   pushBanner: null,
   /**
-   * The Coins the counter shows while a roll's Coins fly home to it (it counts up as each
-   * coin lands); null the rest of the time, when it shows your Coins.
+   * The Wins the counter shows while a pad's Wins fly home to it (it counts up as each
+   * one lands); null the rest of the time, when it shows your Wins.
    */
   coinsShown: null,
   /** Active hatch animation: { eggId, pets }. */
@@ -94,11 +97,11 @@ export const useGame = create((set) => ({
   setPushing: (pushing) => set(pushing ? { pushing, panel: null, panelData: null } : { pushing, pushBanner: null }),
   setClimb: (climb) => set({ climb }),
   showPushBanner: (banner) => set({ pushBanner: banner ? { ...banner, id: performance.now() } : null }),
-  /** Holds the Coins counter at `coins` (what you had before a payout), for the Coins on their way to it. */
+  /** Holds the Wins counter at `coins` (what you had before a payout), for the Wins on their way to it. */
   holdCoins: (coins) => set((s) => ({ coinsShown: s.coinsShown ?? Math.min(coins, s.profile.coins) })),
-  /** Some of them have landed: the counter counts up (never past your real Coins). */
+  /** Some of them have landed: the counter counts up (never past your real Wins). */
   landCoins: (amount) => set((s) => (s.coinsShown === null ? {} : { coinsShown: Math.min(s.profile.coins, Math.round(s.coinsShown + amount)) })),
-  /** All home: the counter shows your Coins again. */
+  /** All home: the counter shows your Wins again. */
   showCoins: () => set({ coinsShown: null }),
 
   setHatch: (hatch) => set({ hatch }),

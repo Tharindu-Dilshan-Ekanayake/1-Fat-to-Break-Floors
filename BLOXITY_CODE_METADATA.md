@@ -1,25 +1,25 @@
 ---
-gameId: get-fat-to-break-tape
+gameId: 1-fat-to-break-floors
 clientDir: client
 buildCommand: npm run build
 distDir: client/dist
-# Nobody dies: running out of Fat just ends your roll down the track, and you're back
-# in the lobby.
+# Nobody dies: you slam floors with your Fat, fall into the rooms under them, and a WINS
+# pad (or the Lobby button) takes you back to the lobby.
 canDie: false
 # Leaderboards, declared by the client and scored by the server.
 hasScore: true
 leaderboards:
   - { id: fat, label: Fattest, mode: best, format: compact, reset: none }
   - { id: rebirths, label: Most Rebirths, mode: best, format: number, reset: weekly }
-  - { id: coins, label: Most Coins, mode: sum, format: compact, reset: weekly }
+  - { id: coins, label: Most Wins, mode: sum, format: compact, reset: weekly }
 roomSize: 8
 notApplicable:
   rewardedAds: The game has no reward a player could earn by watching an ad.
-  gems: Nothing is sold for Gems - every price is in Coins, earned in the game.
+  gems: Nothing is sold for Gems - every price is in Wins, earned in the game.
   playWithFriends: Hosted on Boxity and joining through its matchmaker, so Boxity's own private rooms seat invited friends together; the game makes no private rooms of its own for CrazyGames' instant join.
 ---
 
-# Belly Buster on Boxity
+# Fat to Break Floor on Boxity
 
 Where each piece of the Boxity integration lives:
 

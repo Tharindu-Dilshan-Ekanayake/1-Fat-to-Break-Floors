@@ -180,20 +180,6 @@ const food = svg(
     ]),
 )
 
-/** The currency: a glossy gold coin, its edge showing underneath, a star stamped on it. */
-const coin = svg(
-  `<ellipse cx="50" cy="55" rx="41" ry="39" fill="#c46a00" stroke="${OUT}" stroke-width="6"/>
-  <circle cx="50" cy="47" r="40" fill="url(#cn-g)" stroke="${OUT}" stroke-width="6"/>
-  <circle cx="50" cy="47" r="28" fill="url(#cn-i)" stroke="#d98200" stroke-width="4"/>
-  <path d="M50 31l4.1 10.3 11.1.8-8.5 7.1 2.7 10.7L50 54l-9.4 5.9 2.7-10.7-8.5-7.1 11.1-.8z" fill="#fff3a0" stroke="#d98200" stroke-width="3" stroke-linejoin="round"/>
-  <path d="M18 35A34 34 0 0 1 38 15" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".85"/>`,
-  vgrad('cn-g', GOLD) +
-    vgrad('cn-i', [
-      [0, '#ffb300'],
-      [1, '#ffe56a'],
-    ]),
-)
-
 /** The ribbon of a finish tape, red and white stripes in a wave: what a roll smashes through. */
 const TAPE_RIBBON = 'M4 38C28 22 52 56 96 32l-6 14 6 14C52 82 28 48 4 64l6-13z'
 const tape = svg(
@@ -373,7 +359,8 @@ export const ICON_SVGS = {
   starGold,
   fastForward,
   trophy,
-  coin,
+  // The currency, Wins: a gold trophy (it's `coin` in code, from when it was Wins).
+  coin: trophy,
   fat,
   pets,
   items,

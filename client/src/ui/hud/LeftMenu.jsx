@@ -49,7 +49,7 @@ export function LeftMenu() {
 
   return (
     // As in the reference on a full-size screen; higher up on short ones (landscape
-    // phones), so it stays clear of the Coins and Fat in the corner below.
+    // phones), so it stays clear of the Wins and Fat in the corner below.
     <div
       className="pointer-events-none absolute flex flex-col"
       style={{ left: u(18), top: `max(${u(150)}, min(${u(340)}, calc(100vh - ${u(760)})), ${clear + 8}px)`, gap: u(12) }}

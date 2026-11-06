@@ -13,7 +13,7 @@ const SECTIONS = [
   { title: 'Passes', items: ['fatX2', 'coinsX2', 'fatX3', 'coinsX3', 'vip'] },
   { title: 'Potions', items: ['potionsFat', 'potionsCoins'] },
   { title: 'Eggs', items: ['eggsSunset', 'eggsUnicorn', 'eggsDemon'] },
-  { title: 'Food Courts', items: ['zoneVeryOp', 'zoneBest'] },
+  { title: 'Training Pads', items: ['zoneVeryOp', 'zoneBest'] },
   { title: 'Auras', items: ['auraLightning', 'auraGalaxy', 'auraWater', 'auraFire', 'auraRainbow'] },
   { title: 'Specials', items: ['sphinx'] },
 ]
@@ -38,7 +38,7 @@ const ICONS = {
   auraRainbow: 'aura:rainbow',
 }
 
-/** What a Food Court pass unlocks, from the table it's for: "Unlocks the 30X Frosty Parlor". */
+/** What a Training Pad pass unlocks, from the table it's for: "Unlocks the 30X Frosty Parlor". */
 const zoneBlurb = (product) => {
   const zone = TRAIN_ZONES.find((z) => z.product === product)
   return zone ? `Unlocks the ${zone.mult}X ${zone.name}` : ''
@@ -46,26 +46,26 @@ const zoneBlurb = (product) => {
 
 const BLURBS = {
   fatX2: 'Double the Fat from every bite, forever',
-  coinsX2: 'Double the Coins from every roll, forever',
+  coinsX2: 'Double the Wins from every pad, forever',
   fatX3: 'Triple the Fat from every bite, forever',
-  coinsX3: 'Triple the Coins from every roll, forever',
-  vip: 'x1.5 Fat and x1.5 Coins, forever',
+  coinsX3: 'Triple the Wins from every pad, forever',
+  vip: 'x1.5 Fat and x1.5 Wins, forever',
   potionsFat: 'Three x2 Fat potions, cheaper',
-  potionsCoins: 'Three x2 Coins potions, cheaper',
+  potionsCoins: 'Three x2 Wins potions, cheaper',
   eggsSunset: 'Three Sunset Eggs to hatch',
   eggsUnicorn: 'Three Unicorn Eggs to hatch',
   eggsDemon: 'Three Demon Eggs to hatch',
   zoneVeryOp: zoneBlurb('zoneVeryOp'),
   zoneBest: zoneBlurb('zoneBest'),
-  auraLightning: 'x1.25 Coins, and it crackles',
-  auraGalaxy: 'x1.5 Coins, and it sparkles',
-  auraWater: 'x2 Coins, and it splashes',
-  auraFire: 'x3 Coins, and it blazes',
-  auraRainbow: 'x5 Coins, in every colour',
+  auraLightning: 'x1.25 Wins, and it crackles',
+  auraGalaxy: 'x1.5 Wins, and it sparkles',
+  auraWater: 'x2 Wins, and it splashes',
+  auraFire: 'x3 Wins, and it blazes',
+  auraRainbow: 'x5 Wins, in every colour',
   sphinx: 'Limited: x150 Fat pet',
 }
 
-/** Everything Coins can buy besides foods, eggs and Fat packs, grouped, with what it does. */
+/** Everything Wins can buy besides foods, eggs and Fat packs, grouped, with what it does. */
 export function StorePanel() {
   const passes = useGame((s) => s.profile.passes)
   const coins = useGame((s) => s.profile.coins)

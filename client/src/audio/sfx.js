@@ -286,7 +286,7 @@ function rollStop() {
   music?.duck(false)
 }
 
-// --- Sat at a Food Court table: the kitchen sizzling behind you ---------------------------
+// --- Sat at a training pad's table: the kitchen sizzling ---------------------------
 
 let sizzle = null
 
@@ -561,7 +561,7 @@ export const sfx = {
     const k = trophyRun % (2 * n - 2)
     bell(TROPHY_SCALE[k < n ? k : 2 * n - 2 - k], { volume: 0.085, decay: 0.32 })
   },
-  /** Coins paid out (a tape smashed, a badge): a fanfare, a shimmering chord and a shower of coins. */
+  /** Wins paid out (a WINS pad, a badge): a fanfare, a shimmering chord and a shower of chimes. */
   coins() {
     if (!ready('coins')) return
     ;[784, 988, 1175, 1568].forEach((f, i) => tone(f, { type: 'triangle', at: i * 0.07, duration: 0.2, volume: 0.1, echo: true }))
@@ -594,7 +594,7 @@ export const sfx = {
     noise({ duration: 0.8, volume: 0.15, from: 200, to: 4000, q: 0.6 })
     ;[262, 330, 392, 523, 659, 784].forEach((f, i) => tone(f, { type: 'sawtooth', at: 0.1 + i * 0.07, duration: 0.25, volume: 0.06 }))
   },
-  /** Sitting down at an unlocked Food Court: a soft rising chime. */
+  /** Sitting down at an unlocked training pad: a soft rising chime. */
   zoneEnter() {
     if (!ready('zoneEnter', 400)) return
     ;[523, 784, 1047].forEach((f, i) => tone(f, { type: 'sine', at: i * 0.05, duration: 0.28, volume: 0.07 }))
@@ -608,6 +608,41 @@ export const sfx = {
     if (!ready('jumpLand', 150)) return
     tone(140, { type: 'sine', duration: 0.12, volume: 0.12, slideTo: 70 })
     noise({ duration: 0.08, volume: 0.06, from: 900, to: 300, q: 0.7 })
+  },
+  /** Up for a belly slam: a quick springy whoosh. */
+  slamJump() {
+    if (!ready('slamJump', 120)) return
+    tone(220, { type: 'triangle', duration: 0.16, volume: 0.05, slideTo: 480 })
+    noise({ duration: 0.18, volume: 0.035, from: 600, to: 1800, q: 0.8 })
+  },
+  /**
+   * A belly slam on a floor: a deep BOOM and a crunch of stone, heavier the harder it hit
+   * (`power` 0-1: your Fat against the floor's HP); `final`, it's about to give.
+   */
+  slam(power = 0.5, final = false) {
+    if (!ready('slam', 60)) return
+    const p = Math.min(1, Math.max(0, power))
+    tone(110 - 30 * p, { type: 'sine', duration: 0.35, volume: 0.2 + 0.1 * p, slideTo: 38 })
+    tone(220, { type: 'triangle', duration: 0.08, volume: 0.07, slideTo: 80 })
+    noise({ duration: 0.22, volume: 0.16 + 0.12 * p, from: 1400, to: 220, q: 0.7 })
+    noise({ at: 0.03, duration: 0.12, volume: 0.09, from: 3200, to: 900, q: 1.2 })
+    if (final) noise({ at: 0.05, duration: 0.3, volume: 0.18, from: 2600, to: 500, q: 0.6 })
+  },
+  /** A floor giving way: a great crack, stone crumbling, and the whoosh of falling. */
+  floorBreak() {
+    if (!ready('floorBreak', 300)) return
+    noise({ duration: 0.18, volume: 0.38, from: 3800, to: 900, q: 0.8 })
+    tone(90, { type: 'sawtooth', duration: 0.5, volume: 0.09, slideTo: 35 })
+    for (let i = 0; i < 6; i += 1) {
+      noise({ at: 0.08 + i * 0.07 + Math.random() * 0.03, duration: 0.12, volume: 0.11, from: 1600 + Math.random() * 900, to: 300, q: 1 })
+    }
+    noise({ at: 0.25, duration: 0.8, volume: 0.09, from: 400, to: 1800, q: 0.6 })
+  },
+  /** Landing at the bottom of a fall: a big heavy thud. */
+  bigLand() {
+    if (!ready('bigLand', 300)) return
+    tone(80, { type: 'sine', duration: 0.4, volume: 0.24, slideTo: 32 })
+    noise({ duration: 0.25, volume: 0.16, from: 900, to: 150, q: 0.7 })
   },
   rollStart,
   rollSet,

@@ -10,7 +10,7 @@ import { ChunkyButton, Price } from '../hud/parts'
 import { GRADIENTS, u } from '../hud/style'
 import Panel from './Panel'
 
-/** One aura's row, as in the reference: its icon, name and Coins multiplier, and buy or wear. */
+/** One aura's row, as in the reference: its icon, name and Wins multiplier, and buy or wear. */
 function AuraRow({ id }) {
   const aura = AURAS[id]
   const product = SHOP[aura.product]
@@ -67,7 +67,7 @@ function AuraRow({ id }) {
   )
 }
 
-/** The aura stand's panel: every aura, each multiplying the Coins your rolls earn. */
+/** The aura stand's panel: every aura, each multiplying the Wins your pads pay. */
 export function AurasPanel() {
   return (
     <Panel title="Auras" icon="aura:rainbow" width={940}>

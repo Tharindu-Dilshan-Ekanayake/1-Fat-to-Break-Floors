@@ -24,7 +24,7 @@ export function AlertBadge({ size = 44, style }) {
   )
 }
 
-/** A price in Coins: a coin and the amount, gold - or red while you can't afford it. */
+/** A price in Wins: a coin and the amount, gold - or red while you can't afford it. */
 export function Price({ amount, size = 34, afford = true, className = '', style }) {
   return (
     <span className={`inline-flex items-center ${className}`} style={{ gap: u(size * 0.12), fontSize: u(size), lineHeight: 1, ...style }}>

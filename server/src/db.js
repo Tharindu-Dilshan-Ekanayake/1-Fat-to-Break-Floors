@@ -23,13 +23,14 @@ import { normalizeProfile } from '../../shared/logic.js'
 
 const DB_PATH = process.env.DB_PATH || fileURLToPath(new URL('../data/game.db', import.meta.url))
 
-const BOARDS = { rebirths: 'rebirths', fat: 'bestFat', height: 'bestMeter' }
+/** The boards and the field each sorts by: `height` is the deepest floor reached (it was a run's length once). */
+const BOARDS = { rebirths: 'rebirths', fat: 'bestFat', height: 'bestFloor' }
 
 const leaderboardFields = (profile) => ({
   name: profile.name,
   rebirths: profile.rebirths,
   bestFat: profile.stats.bestFat,
-  bestMeter: profile.stats.bestMeter,
+  bestFloor: profile.stats.bestFloor ?? 0,
   updatedAt: profile.lastSeen,
 })
 
@@ -126,6 +127,7 @@ async function openSqlite(path) {
     CREATE INDEX IF NOT EXISTS profiles_meter ON profiles (best_meter DESC);
     CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `)
+  // (best_meter holds the deepest floor reached: the column's older than the stages.)
   const columns = { rebirths: 'rebirths', fat: 'best_fat', height: 'best_meter' }
   const readStock = () => {
     const row = db.prepare("SELECT value FROM kv WHERE key = 'sphinxStock'").get()
@@ -146,7 +148,7 @@ async function openSqlite(path) {
            name = excluded.name, data = excluded.data, rebirths = excluded.rebirths,
            best_fat = excluded.best_fat, best_meter = excluded.best_meter,
            updated_at = excluded.updated_at`,
-      ).run(profile.id, f.name, JSON.stringify(profile), f.rebirths, f.bestFat, f.bestMeter, f.updatedAt)
+      ).run(profile.id, f.name, JSON.stringify(profile), f.rebirths, f.bestFat, f.bestFloor, f.updatedAt)
       return true
     },
     async top(limit) {
@@ -168,7 +170,7 @@ async function openSqlite(path) {
         const f = leaderboardFields(JSON.parse(row.data))
         db.prepare(
           `INSERT INTO profiles (id, name, data, rebirths, best_fat, best_meter, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ).run(userId, f.name ?? '', row.data, f.rebirths ?? 0, f.bestFat ?? 0, f.bestMeter ?? 0, f.updatedAt ?? Date.now())
+        ).run(userId, f.name ?? '', row.data, f.rebirths ?? 0, f.bestFat ?? 0, f.bestFloor ?? 0, f.updatedAt ?? Date.now())
         return guestId
       }
       return null

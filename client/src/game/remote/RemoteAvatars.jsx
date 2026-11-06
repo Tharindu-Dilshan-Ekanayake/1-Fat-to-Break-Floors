@@ -4,13 +4,12 @@ import { Vector3 } from 'three'
 
 import { walkSpeed } from '@shared/balance'
 
-import { remotePlayers } from '../../net/remotePlayers'
+import { remotePlayers, sharesLevel } from '../../net/remotePlayers'
 import { getQuality } from '../../store/quality'
 import { createHeldFood, disposeHeldFood } from '../food'
 import { BloxityAvatar } from '../PlayerAvatar'
 import { emoteMotion } from '../emotes'
 import { bulkFor, FAT_SCALE, growBody } from '../playerPose'
-import { stepRemotePushers } from '../push/remotePush'
 
 /** How often the set of players is checked for comings, goings and outfit changes. */
 const PICK_MS = 500
@@ -21,8 +20,6 @@ const POSE_HALF = 30
 const POSE_QUARTER = 60
 /** Top walking speed: full stride amplitude, as for your own character. */
 const MAX_SPEED = walkSpeed()
-/** Facing down the track, rolling. */
-const DOWNHILL_YAW = Math.PI
 /** Curled up, the middle of the ball above the feet's standing spot (skinny -> fat), as for yours. */
 const BALL_MIDDLE = [0.95, 1.2]
 /** A bite (up to the mouth, three chomps, down) takes this long, as for your own character. */
@@ -33,8 +30,8 @@ const _up = new Vector3(0, 1, 0)
 /**
  * One other player as their real Bloxity avatar, dressed as they are, as fat as they
  * are, holding their food and posed by the same playerPose as yours, from what the
- * network says they're doing: walking pace, eating at a Food Court or after a click,
- * jumping - and rolling down the track, curled up in a ball.
+ * network says they're doing: walking pace, eating at a training pad or after a click,
+ * jumping - and slamming a floor, curled up in a ball on the way down.
  */
 function RemoteAvatar({ sessionId, look }) {
   const groupRef = useRef(null)
@@ -53,7 +50,6 @@ function RemoteAvatar({ sessionId, look }) {
     const r = remotePlayers.get(sessionId)
     if (!group || !r) return
     const delta = Math.min(rawDelta, 0.05)
-    stepRemotePushers(remotePlayers, state.clock.elapsedTime, delta)
     const m = motionRef.current
     const far = state.camera.position.distanceTo(group.position)
     // Past the preset's avatar distance: not drawn, and hardly posed (it's still placed,
@@ -66,36 +62,24 @@ function RemoteAvatar({ sessionId, look }) {
     held?.setFood?.(r.foodId)
     group.scale.setScalar(1 + FAT_SCALE * Math.min(1, m.bulk))
 
-    // Rolling down the track, curled up in a ball.
-    if (r.pushing) {
-      group.visible = !hidden
-      group.position.copy(r.shownAt)
-      group.quaternion.setFromAxisAngle(_up, DOWNHILL_YAW)
-      if (rollRef.current) rollRef.current.rotation.x = r.roll
-      if (ballRef.current) ballRef.current.position.y = -(BALL_MIDDLE[0] + (BALL_MIDDLE[1] - BALL_MIDDLE[0]) * m.bulk)
-      if (held) held.visible = false
-      m.rolling = true
-      m.speed = r.pushSpeed
-      m.grounded = true
-      m.training = false
-      m.curl = 0
-      m.emoteClip = null
-      lastY.current = null
-      return
-    }
-    m.rolling = false
-    if (rollRef.current) rollRef.current.rotation.x = 0
-    if (ballRef.current) ballRef.current.position.y = 0
+    // Slamming a floor: curled up in a ball on the way down, spinning.
+    const slamming = r.anim === 'slam'
+    m.rolling = slamming && m.vy < 0
+    if (m.rolling) r.roll = (r.roll ?? 0) + delta * 16
+    else r.roll = 0
+    if (rollRef.current) rollRef.current.rotation.x = r.roll
+    if (ballRef.current) ballRef.current.position.y = m.rolling ? -(BALL_MIDDLE[0] + (BALL_MIDDLE[1] - BALL_MIDDLE[0]) * m.bulk) : 0
     if (held) held.visible = true
 
-    // Mid-roll but we never saw it start (we joined late): not drawn at the top.
-    group.visible = !hidden && r.anim !== 'push'
+    // Only those on your level: a floor or a ceiling is between you and the rest.
+    group.visible = !hidden && sharesLevel(r)
     group.position.copy(r.position)
+    if (m.rolling) group.position.y += 0.5 + 0.3 * m.bulk
     group.quaternion.setFromAxisAngle(_up, r.yaw)
 
     m.speed = r.speed
     m.maxSpeed = MAX_SPEED
-    m.grounded = r.anim !== 'jump'
+    m.grounded = r.anim !== 'jump' && r.anim !== 'slam'
     m.training = r.anim === 'train'
     m.sitting = m.training
     m.dance = r.anim === 'dance' ? 1 : 0
@@ -105,6 +89,10 @@ function RemoteAvatar({ sessionId, look }) {
     const y = r.position.y
     if (lastY.current !== null) m.vy += ((y - lastY.current) / Math.max(delta, 1e-3) - m.vy) * 0.3
     lastY.current = y
+    // Leaping up for a slam; flailing down through a floor.
+    const ease = 1 - Math.exp(-12 * delta)
+    m.rising = (m.rising ?? 0) + ((slamming && m.vy >= 0 ? 1 : 0) - (m.rising ?? 0)) * ease
+    m.falling = (m.falling ?? 0) + ((!slamming && r.anim === 'jump' && m.vy < -9 ? 1 : 0) - (m.falling ?? 0)) * ease
     m.stride += delta * (5 + 6 * Math.min(1, r.speed / MAX_SPEED))
     // Their Boxity emote, while they stand still.
     if (!r.emote || r.speed > 0.6 || !m.grounded || m.training || !emoteMotion(m, r.emote, r.emoteStart)) m.emoteClip = null

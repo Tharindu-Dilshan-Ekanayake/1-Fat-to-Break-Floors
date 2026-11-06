@@ -5,7 +5,7 @@ import { getGame } from '../store/game'
 import { actions } from './actions'
 
 /**
- * Buys a shop item with Coins. The authority checks and charges; this only spares a
+ * Buys a shop item with Wins. The authority checks and charges; this only spares a
  * round trip when the answer is obviously no (the price already shows red).
  */
 export function buy(productId) {

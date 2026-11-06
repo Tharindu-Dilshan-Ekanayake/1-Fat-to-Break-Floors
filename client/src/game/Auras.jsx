@@ -8,7 +8,7 @@ import { remotePlayers } from '../net/remotePlayers'
 import { getGame } from '../store/game'
 import { getQuality } from '../store/quality'
 import { createGlowInstances, disposeGlow } from './glow'
-import { push } from './push/pushControl'
+import { sharesLevel } from '../net/remotePlayers'
 import { runtime } from './runtime'
 
 /** You and up to eight others; a soft body glow and four sparks circling each. */
@@ -67,10 +67,10 @@ export function Auras() {
     const { particles, glow } = getQuality()
     let i = 0
     const mine = getGame().profile.equippedAura
-    if (mine) i = wear(mesh, i, mine, push.active ? push.position : runtime.player.position, 0, t, particles, glow)
+    if (mine) i = wear(mesh, i, mine, runtime.player.position, 0, t, particles, glow)
     let n = 1
     for (const r of remotePlayers.values()) {
-      if (r.aura && (r.pushing || r.anim !== 'push')) i = wear(mesh, i, r.aura, r.shownAt, n * 1.7, t, particles, glow)
+      if (r.aura && sharesLevel(r)) i = wear(mesh, i, r.aura, r.shownAt, n * 1.7, t, particles, glow)
       n += 1
     }
     mesh.count = i

@@ -4,10 +4,9 @@ import {
   BITE_BURST,
   MAX_BITES_PER_SECOND,
   MULTI_HATCH,
-  PUSH_START,
-  PUSH_TIMEOUT_MS,
-  RUN_SPEED_MAX,
   SHOP,
+  SLAM_BURST,
+  SLAM_INTERVAL,
   TRAIN_INTERVAL,
   TRAIN_ZONES,
   WORLD_PORTALS,
@@ -33,61 +32,71 @@ import {
   hatchEgg,
   isMaxLevel,
   isZoneUnlocked,
+  padWins,
   skipRebirth,
-  trackOf,
-  TRACKS,
+  slamDamage,
+  stagesOf,
   unequipPet,
   usePotion,
-  coinsMultiplier,
   worldUnlocked,
 } from './logic.js'
 import {
   atFoodCounter,
-  eggStandNear,
-  FREE_REWARD,
-  inPushZone,
-  MAX_MOVE_SPEED,
-  portalAt,
-  TRACK_HALF_WIDTH,
   benchAt,
+  eggStandNear,
+  floorTopY,
+  FREE_REWARD,
+  inYard,
+  onFloor,
+  onPad,
+  portalAt,
+  roomFloorY,
+  STAGE_RETURN,
 } from './world.js'
 
-/** A seated player's reported position may wander this far off the bench (lag). */
+/** A seated player's reported position may wander this far off the chair (lag). */
 const SEAT_SLACK = 0.5
-/** Same for the push zone. */
-const PUSH_SLACK = 1.5
 /** Food is bought at the Food Shop's counter; allow for a little lag. */
 const COUNTER_SLACK = 2
-/** How far to either side of the track a runner may report being. */
-const TRACK_X = TRACK_HALF_WIDTH - 1
+/** A slam or a pad claim says where it happened: it must be this close to where we last had the player. */
+const CLAIM_NEAR = 3.5
+/** How far off a floor or pad's edge a slam or claim may be (lag, and your belly's size). */
+const FLOOR_SLACK = 1.2
+const PAD_SLACK = 1
+/** How far above a floor's top a slam may come from (you're mid-jump when you report). */
+const SLAM_HEIGHT = 5
 
 /**
- * One player's authoritative session: validates intents, runs the Food Court tick and
+ * One player's authoritative session: validates intents, runs the training-pad tick and
  * reports what happened through `emit`.
  *
  * Transport-agnostic on purpose. The Colyseus room wraps one of these per client; the
  * offline mode wraps one for the local player. Either way the rules that run are
  * byte-for-byte the same.
  *
- * A roll down the tape track is called a `push` in the protocol (startPush, pushAt,
- * endPush): every tape its Fat is enough for it smashes, and the first one too strong
- * stops it. You keep your Fat.
+ * THE STAGES. `level` is where the player is: -1 in the lobby (the yard and floor 0
+ * too), i in room i. Standing on the floor ahead (floor `level + 1`) they slam it: every
+ * slam knocks their Fat off its HP, and at 0 it breaks and they're in the room under it.
+ * There the WINS pad pays and sends them home; or they walk on and slam the next floor.
+ * Floors' HP is per dive: back in the lobby, every floor is whole again.
  *
  * Events emitted (type, payload):
  * - 'profile'    { profile, session }  full state, after anything structural
  * - 'train'      { source, zone, gain, fat, eaten, level, leveledUp, maxed }  each Fat
- *                  gain; `source` is 'bite' (a click) or 'zone' (sat at Food Court
+ *                  gain; `source` is 'bite' (a click) or 'zone' (sat at training pad
  *                  `zone`). Walking earns nothing.
- * - 'push'       { reach, power, start, x }  a roll's begun: its power (your Fat now) and
- *                  where it's stopped (the first tape too strong for it, or the end)
- * - 'tape'       { stage, coins, top }  a tape smashed, and what it paid
- * - 'pushEnd'    { reason, coins, tapes }  the roll is over, back in the plaza
- *                  ('blocked', 'left', 'top', 'timeout'), with what it earned
+ * - 'slam'       { stage, hp, max, damage }  floor `stage` was slammed (or, with damage 0,
+ *                  healed back up): its HP left
+ * - 'floorBreak' { stage }  floor `stage` broke: you're in its room now
+ * - 'wins'       { stage, wins, last }  a WINS pad paid out
+ * - 'teleport'   { x, z, yaw, reason }  put back in the lobby ('wins', 'left')
  * - 'pack'       { amount }  a Fat pack landed
  * - 'hatch'      { eggId, pets: [{ uid, id }] }  pets to reveal
  * - 'badge'      { id, name }
+ * - 'world'      { world }  through a portal
  *
- * `onPush(run | null)` lets the host show other players where someone is on the track.
+ * `onLevel(level)` lets the host tell other players which level someone is on;
+ * `onTeleport(x, z)` moves them there on the host's side.
  */
 export class PlayerSession {
   /**
@@ -95,33 +104,34 @@ export class PlayerSession {
    * @param {{ now: number, emit: (type: string, payload?: object) => void,
    *           getPosition: () => {x: number, y: number, z: number},
    *           onPurchase?: (productId: string) => boolean,
-   *           onPush?: (push: object | null) => void }} options
+   *           onLevel?: (level: number) => void,
+   *           onTeleport?: (x: number, z: number) => void }} options
    *   `onPurchase` lets the host veto or count a shop sale (stock limits).
    */
-  constructor(profile, { now, emit, getPosition, onPurchase, onPush }) {
+  constructor(profile, { now, emit, getPosition, onPurchase, onLevel, onTeleport }) {
     this.profile = profile
     this.session = createSession(now)
     this.emit = emit
     this.getPosition = getPosition
     this.onPurchase = onPurchase
-    this.onPush = onPush
+    this.onLevel = onLevel
+    this.onTeleport = onTeleport
 
-    /** Food Court the client says it's sat at; verified against position every tick. */
+    /** Training pad the client says it's sat at; verified against position every tick. */
     this.zone = -1
     this.trainTimer = 0
-    /**
-     * The roll in progress: { phase: 'run', world, stage, startedAt, start, power, reach,
-     * meter, x, lastReportAt, tapes, coins }. `power` is the Fat it set off with, `reach`
-     * the metre it's stopped at; `tapes` the ones it's been paid for.
-     */
-    this.push = null
-    /** Coins earned rolling (tapes) not yet counted towards a leaderboard. */
+    /** Where in the stages: -1 the lobby, i room i. */
+    this.level = -1
+    /** This dive: each floor's HP left (missing = whole), and when it began. Null in the lobby, before any slam. */
+    this.dive = null
+    /** Wins earned (pads) not yet counted towards a leaderboard. */
     this.coinsEarned = 0
-    /** Server time until which a new run can't start (just after one ended). */
-    this.busyUntil = 0
     /** Bites banked (a token bucket refilling at MAX_BITES_PER_SECOND), and when last refilled. */
     this.biteTokens = BITE_BURST
     this.biteRefilledAt = now
+    /** Slams banked, the same way (one per SLAM_INTERVAL). */
+    this.slamTokens = SLAM_BURST
+    this.slamRefilledAt = now
     this.dirty = false
   }
 
@@ -144,6 +154,20 @@ export class PlayerSession {
     if (advanceTutorial(this.profile, event)) this.dirty = true
   }
 
+  /**
+   * Where a slam or a pad claim says it happened, if that's believable - near where we
+   * last had the player - else null. (Their own report is fresher than our last
+   * position update; their position updates keep it honest.)
+   */
+  claimedAt({ x, z }) {
+    const p = this.getPosition()
+    const cx = Number(x)
+    const cz = Number(z)
+    if (!Number.isFinite(cx) || !Number.isFinite(cz)) return { x: p.x, y: p.y, z: p.z }
+    if (Math.hypot(cx - p.x, cz - p.z) > CLAIM_NEAR) return null
+    return { x: cx, y: p.y, z: cz }
+  }
+
   // --- Intents ---------------------------------------------------------------------
 
   /** Dispatches one client message. Unknown types are ignored. */
@@ -158,7 +182,7 @@ export class PlayerSession {
     enterZone({ zone }) {
       const index = Number(zone)
       if (!Number.isInteger(index) || !TRAIN_ZONES[index]) return
-      if (!isZoneUnlocked(this.profile, index)) return
+      if (!isZoneUnlocked(this.profile, index) || this.level >= 0) return
       if (this.zone !== index) {
         this.zone = index
         // The first bite comes a beat after sitting down, not instantly.
@@ -170,9 +194,8 @@ export class PlayerSession {
       this.zone = -1
     },
 
-    /** One click: a bite of your food, worth more sat at a Food Court. Not mid-run. */
+    /** One click: a bite of your food, worth more sat at a training pad. Anywhere, even down in the stages. */
     eat(_payload, now) {
-      if (this.push) return
       this.biteTokens = Math.min(BITE_BURST, this.biteTokens + ((now - this.biteRefilledAt) / 1000) * MAX_BITES_PER_SECOND)
       this.biteRefilledAt = now
       if (this.biteTokens < 1) return
@@ -189,98 +212,83 @@ export class PlayerSession {
     },
 
     rebirth() {
-      if (this.push) return
       const result = applyRebirth(this.profile)
       if (result.ok) this.afterRebirth()
     },
 
     skipRebirth() {
-      if (this.push) return
       const result = skipRebirth(this.profile)
       if (result.ok) this.afterRebirth()
     },
 
     /**
-     * Sets off down the tape track from the ROLL ZONE at its top, with all your Fat behind
-     * you. No Fat, no roll.
+     * A slam, landing on the floor ahead (floor `level + 1`) at (x, z): knocks your Fat
+     * off its HP - one per SLAM_INTERVAL at most - and at 0 HP breaks it, and you're in
+     * the room under it. No Fat, no slam.
      */
-    startPush(_payload, now) {
-      if (now < this.busyUntil || this.push) return
-      const p = this.getPosition()
-      if (!inPushZone(p.x, p.z, PUSH_SLACK)) return
-      const power = this.profile.fat
-      if (!(power > 0)) return
-      const track = trackOf(this.profile)
-      const start = PUSH_START
-      const reach = Math.round(track.reachOf(power) * 100) / 100
-      const x = Math.max(-TRACK_X, Math.min(TRACK_X, p.x))
-      this.profile.stats.runs += 1
-      this.push = {
-        phase: 'run',
-        world: track.index,
-        stage: 0,
-        startedAt: now,
-        start,
-        power,
-        reach,
-        meter: start,
-        x,
-        lastReportAt: now,
-        tapes: [],
-        coins: 0,
-      }
+    slam(payload, now) {
+      const set = stagesOf(this.profile)
+      const target = this.level + 1
+      if (target >= set.count) return
+      const p = this.claimedAt(payload)
+      if (!p || !onFloor(target, p.x, p.z, FLOOR_SLACK)) return
+      const top = floorTopY(target)
+      if (p.y < top - 1.5 || p.y > top + SLAM_HEIGHT) return
+      const damage = slamDamage(this.profile)
+      if (!(damage > 0)) return
+      this.slamTokens = Math.min(SLAM_BURST, this.slamTokens + (now - this.slamRefilledAt) / 1000 / SLAM_INTERVAL)
+      this.slamRefilledAt = now
+      if (this.slamTokens < 1) return
+      this.slamTokens -= 1
+
+      if (!this.dive) this.dive = { world: this.profile.world, hp: [], startedAt: now }
+      const max = set.stages[target].hp
+      const hp = Math.max(0, (this.dive.hp[target] ?? max) - damage)
+      this.dive.hp[target] = hp
       this.zone = -1
-      this.emit('push', { reach, power, start, x })
-      this.onPush?.(this.push)
-      this.dirty = true
-      this.badge('firstRun')
-    },
+      this.emit('slam', { stage: target, hp, max, damage })
+      if (hp > 0) return
 
-    /**
-     * Where the roller has got to - trusted only as far as they could really have got: no
-     * further than the first tape too strong for them, nor than rolling flat out since
-     * they set off could take them, and never backwards. Every tape at or before that,
-     * that their Fat is enough for, is smashed, and pays once.
-     */
-    pushAt({ meter, x }, now) {
-      const run = this.push
-      if (!run) return
-      const m = Number(meter)
-      if (!Number.isFinite(m)) return
-      const track = TRACKS[run.world]
-      run.x = Math.max(-TRACK_X, Math.min(TRACK_X, Number(x) || 0))
-      run.lastReportAt = now
-      const allowed = Math.min(run.reach, run.start + ((now - run.startedAt) / 1000) * RUN_SPEED_MAX + 4)
-      run.meter = Math.max(run.meter, Math.min(m, allowed))
-      run.stage = track.stageAt(run.meter)
-      this.onPush?.(run)
+      // Broken through: you're in its room.
+      this.level = target
       const stats = this.profile.stats
-      stats.bestMeter = Math.max(stats.bestMeter, Math.round(run.meter * 10) / 10)
-
-      for (const tape of track.tapes) {
-        if (run.tapes.includes(tape.stage) || run.meter < tape.meter - 0.01 || run.power < tape.need - 1e-6) continue
-        run.tapes.push(tape.stage)
-        const coins = Math.max(1, Math.round(tape.coins * coinsMultiplier(this.profile, now)))
-        const top = tape.stage === track.stages.length - 1
-        this.profile.coins += coins
-        this.coinsEarned += coins
-        run.coins += coins
-        stats.tapes += 1
-        this.dirty = true
-        this.emit('tape', { stage: tape.stage, coins, top })
-        this.tutorial('tape')
-        this.badge('firstTape')
-        if (top) {
-          stats.tops += 1
-          this.badge('top')
-        }
-      }
+      stats.floors += 1
+      stats.bestFloor = Math.max(stats.bestFloor, target + 1)
+      if (target === 0) stats.runs += 1
+      this.dirty = true
+      this.emit('floorBreak', { stage: target })
+      this.onLevel?.(this.level)
+      this.tutorial('floor')
+      if (target === 0) this.badge('firstRun')
+      this.badge('firstTape')
     },
 
-    /** The roll is over: stopped by a tape too strong ('blocked'), the end reached ('top'), or given up ('left'). */
-    endPush({ reason }, now) {
-      if (!this.push) return
-      this.finishPush(now, ['blocked', 'left', 'top'].includes(reason) ? reason : 'left')
+    /** Stepping onto the WINS pad of the room you're in, at (x, z): it pays, and home you go. */
+    claimWins(payload, now) {
+      if (this.level < 0) return
+      const p = this.claimedAt(payload)
+      if (!p || !onPad(this.level, p.x, p.z, PAD_SLACK)) return
+      if (Math.abs(p.y - roomFloorY(this.level)) > 3) return
+      const set = stagesOf(this.profile)
+      const stage = this.level
+      const wins = padWins(this.profile, stage, now)
+      const last = stage === set.count - 1
+      this.profile.coins += wins
+      this.coinsEarned += wins
+      this.dirty = true
+      this.emit('wins', { stage, wins, last })
+      this.tutorial('wins')
+      if (last) {
+        this.profile.stats.tops += 1
+        this.badge('top')
+      }
+      this.returnToLobby('wins')
+    },
+
+    /** Back to the lobby from the stages, with nothing (the Lobby button, or Reset Character). */
+    leaveStage() {
+      if (this.level < 0) return
+      this.returnToLobby('left')
     },
 
     buyFood({ id }) {
@@ -352,17 +360,17 @@ export class PlayerSession {
 
     claimFreeReward() {
       const p = this.getPosition()
-      if (Math.hypot(p.x - FREE_REWARD.x, p.z - FREE_REWARD.z) > FREE_REWARD.radius + 1.5) return
+      if (this.level >= 0 || Math.hypot(p.x - FREE_REWARD.x, p.z - FREE_REWARD.z) > FREE_REWARD.radius + 1.5) return
       const result = claimFreeReward(this.profile, this.session)
       this.afterReward(result)
     },
 
     /**
-     * Stepping through a world portal: to its world (the first time, with its Coins), or,
-     * from that world, back to World 1. Not mid-run.
+     * Stepping through a world portal: to its world (the first time, with its Wins), or,
+     * from that world, back to World 1. Only from the lobby.
      */
     portal() {
-      if (this.push) return
+      if (this.level >= 0) return
       const p = this.getPosition()
       const portal = portalAt(p.x, p.z, 2)
       if (!portal) return
@@ -371,6 +379,7 @@ export class PlayerSession {
       if (!worldUnlocked(this.profile, to)) return
       if (to === there) this.badge(portal.id)
       this.profile.world = to
+      this.dive = null
       this.dirty = true
       this.emit('world', { world: to })
     },
@@ -381,7 +390,7 @@ export class PlayerSession {
       this.dirty = true
     },
 
-    /** Buys a SHOP item with Coins. */
+    /** Buys a SHOP item with Wins. */
     purchase({ productId }) {
       const item = SHOP[productId]
       if (!item) return
@@ -417,15 +426,23 @@ export class PlayerSession {
     if (this.profile.rebirths === 1) this.badge('firstRebirth')
   }
 
-  /** Ends the roll in progress, if any, and tells the client (it may already know). You keep your Fat. */
-  finishPush(now, reason) {
-    const run = this.push
-    if (!run) return
-    this.push = null
-    this.busyUntil = now + 600
+  /** Out of the stages, back in front of the gate; every floor is whole again. */
+  returnToLobby(reason) {
+    this.level = -1
+    this.dive = null
+    this.zone = -1
     this.dirty = true
-    this.onPush?.(null)
-    this.emit('pushEnd', { reason, coins: run.coins, tapes: run.tapes.length })
+    this.onLevel?.(-1)
+    this.onTeleport?.(STAGE_RETURN.x, STAGE_RETURN.z)
+    this.emit('teleport', { x: STAGE_RETURN.x, z: STAGE_RETURN.z, yaw: STAGE_RETURN.yaw, reason })
+  }
+
+  /** Back to the very start (Boxity's Reset Character, a reconnect): out of the stages, nothing paid. */
+  resetPlace() {
+    this.level = -1
+    this.dive = null
+    this.zone = -1
+    this.onLevel?.(-1)
   }
 
   // --- Simulation ------------------------------------------------------------------
@@ -433,21 +450,19 @@ export class PlayerSession {
   /** Whether the player is at (or right by) the Food Shop's counter. */
   atCounter() {
     const p = this.getPosition()
-    return atFoodCounter(p.x, p.z, COUNTER_SLACK)
+    return this.level < 0 && atFoodCounter(p.x, p.z, COUNTER_SLACK)
   }
 
-  /** Whether the player is really sat at the table of the Food Court they claim. */
+  /** Whether the player is really sat at a chair of the training pad they claim. */
   onClaimedZone() {
-    if (this.zone < 0) return false
+    if (this.zone < 0 || this.level >= 0) return false
     const p = this.getPosition()
     return benchAt(p.x, p.z, SEAT_SLACK) === this.zone
   }
 
-  /** Advances Food Court eating and runs. Call at a steady rate (the room's simulation interval). */
+  /** Advances training-pad eating. Call at a steady rate (the room's simulation interval). */
   tick(dt, now) {
-    if (this.push) {
-      if (now - this.push.lastReportAt > PUSH_TIMEOUT_MS) this.finishPush(now, 'timeout')
-    } else if (this.zone >= 0 && now >= this.busyUntil && this.onClaimedZone()) {
+    if (this.zone >= 0 && this.onClaimedZone()) {
       this.trainTimer += dt
       while (this.trainTimer >= TRAIN_INTERVAL) {
         this.trainTimer -= TRAIN_INTERVAL
@@ -455,6 +470,15 @@ export class PlayerSession {
       }
     } else {
       this.trainTimer = Math.min(this.trainTimer, TRAIN_INTERVAL * 0.5)
+    }
+    // Walked away from floor 0 without breaking it: it's whole again.
+    if (this.level < 0 && this.dive) {
+      const p = this.getPosition()
+      if (!inYard(p.x, p.z, 1.5)) {
+        const max = stagesOf(this.profile).stages[0].hp
+        this.dive = null
+        this.emit('slam', { stage: 0, hp: max, max, damage: 0 })
+      }
     }
     this.profile.stats.playtime += dt
     if (this.dirty) this.sendProfile()
@@ -474,7 +498,7 @@ export class PlayerSession {
         maxed: result.maxed,
       })
     }
-    if (this.profile.settings.autoRebirth && !this.push && isMaxLevel(this.profile)) {
+    if (this.profile.settings.autoRebirth && isMaxLevel(this.profile)) {
       const rebirth = applyRebirth(this.profile)
       if (rebirth.ok) this.afterRebirth()
     }

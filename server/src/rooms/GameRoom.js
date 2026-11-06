@@ -2,12 +2,12 @@ import { Room } from '@colyseus/core'
 
 import { applyOfflineProgress } from '../../../shared/logic.js'
 import { PlayerSession } from '../../../shared/session.js'
-import { clampToWalkable, isPushReturn, MAX_MOVE_SPEED, SPAWN } from '../../../shared/world.js'
+import { clampToLevel, heightRange, MAX_MOVE_SPEED, SPAWN } from '../../../shared/world.js'
 import { isGuestId, noteScores, verifyPlayerToken } from '../boxity.js'
 import { adoptGuestProgress, getSphinxStock, loadProfile, saveProfile, takeSphinx } from '../db.js'
 import { getLeaderboards } from '../leaderboards.js'
 import { activePlayers, broadcastAll, liveRooms } from '../registry.js'
-import { GameState, NOT_PUSHING, PlayerState } from './schema.js'
+import { GameState, PlayerState } from './schema.js'
 
 const MAX_CLIENTS = 8
 const RECONNECT_SECONDS = 20
@@ -17,13 +17,15 @@ const PATCH_HZ = 15
 const SIM_HZ = 10
 /** Allowance on top of max speed for a position update to be accepted. */
 const MOVE_SLACK = 2.5
+/** After the server moves a player, this long to ignore (not correct) reports from where they were. */
+const TELEPORT_GRACE_MS = 1500
 /** Close code used when the same player joins somewhere else (4000-4010 are Colyseus's own). */
 const DUPLICATE_LOGIN = 4100
 /** Names this server process in save ownership; Legion sets POD_NAME per pod. */
 const POD = process.env.POD_NAME || `local-${process.pid}`
 
 /** What other players may be told someone is doing. */
-const ANIMS = ['idle', 'walk', 'train', 'jump', 'push', 'dance']
+const ANIMS = ['idle', 'walk', 'train', 'jump', 'slam', 'dance']
 
 /** Unambiguous characters for lobby codes people read out to each other. */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -120,7 +122,7 @@ export class GameRoom extends Room {
     const player = new PlayerState()
     const spawnX = SPAWN.x + (Math.random() - 0.5) * 6
     const spawnZ = SPAWN.z + (Math.random() - 0.5) * 4
-    Object.assign(player, { name, uid: verified && !isGuestId(playerId) ? playerId : '', x: spawnX, y: 0, z: spawnZ, rotY: SPAWN.yaw, anim: 'idle', pushMeter: NOT_PUSHING })
+    Object.assign(player, { name, uid: verified && !isGuestId(playerId) ? playerId : '', x: spawnX, y: 0, z: spawnZ, rotY: SPAWN.yaw, anim: 'idle', stage: -1 })
     this.state.players.set(client.sessionId, player)
 
     const session = new PlayerSession(profile, {
@@ -133,11 +135,20 @@ export class GameRoom extends Room {
         if (ok) broadcastAll('stock', { sphinx: getSphinxStock() })
         return ok
       },
-      // Everyone else sees you up the track from the synced state.
-      onPush: (push) => {
-        player.pushMeter = push ? push.meter : NOT_PUSHING
-        player.pushX = push ? push.x : 0
-        player.pushPhase = push ? push.phase : ''
+      // Everyone else sees which level of the stages you're on, from the synced state.
+      onLevel: (level) => {
+        player.stage = level
+      },
+      // Put back in the lobby by the server (a WINS pad, the Lobby button): taken as
+      // read, so the trip isn't mistaken for a teleport hack.
+      onTeleport: (x, z) => {
+        const member = this.members.get(client.sessionId)
+        Object.assign(player, { x, y: 0, z })
+        if (member) {
+          member.lastPos = { x, z }
+          member.lastPosAt = Date.now()
+          member.teleportedAt = Date.now()
+        }
       },
     })
 
@@ -277,8 +288,10 @@ export class GameRoom extends Room {
 
   /**
    * Position reports, ~10 Hz from each client. Accepted if the move is physically
-   * possible since the last accepted one (or is the trip back after a push);
-   * otherwise the client is snapped back.
+   * possible since the last accepted one, and kept where the player can be on their
+   * level of the stages (the lobby, or the room they've broken into); otherwise the
+   * client is snapped back. Just after the server has put them back in the lobby,
+   * reports from before they heard are ignored rather than corrected.
    */
   handlePosition(client, msg) {
     const member = this.members.get(client.sessionId)
@@ -292,15 +305,18 @@ export class GameRoom extends Room {
     const now = Date.now()
     const dt = Math.max(0.05, (now - member.lastPosAt) / 1000)
     const dist = Math.hypot(x - member.lastPos.x, z - member.lastPos.z)
-    if (dist > MAX_MOVE_SPEED * dt + MOVE_SLACK && !isPushReturn(member.lastPos, { x, z })) {
+    if (dist > MAX_MOVE_SPEED * dt + MOVE_SLACK) {
+      if (now - (member.teleportedAt || 0) < TELEPORT_GRACE_MS) return
       client.send('correct', { x: member.lastPos.x, y: player.y, z: member.lastPos.z })
       return
     }
-    const clamped = clampToWalkable(x, z)
+    const level = member.session.level
+    const clamped = clampToLevel(level, x, z)
+    const range = heightRange(level)
     member.lastPos = clamped
     member.lastPosAt = now
     player.x = clamped.x
-    player.y = Math.max(0, Math.min(y, 6))
+    player.y = Math.max(range.min, Math.min(y, range.max))
     player.z = clamped.z
     player.rotY = Number(msg.r) || 0
     player.anim = ANIMS.includes(msg.a) ? msg.a : 'idle'
@@ -332,17 +348,18 @@ export class GameRoom extends Room {
   }
 
   /**
-   * Boxity's "Reset Character": back at the spawn point at once (out of any climb), the
+   * Boxity's "Reset Character": back at the spawn point at once (out of the stages), the
    * jump allowed since it's the server that puts you there.
    */
   handleRespawn(client) {
     const member = this.members.get(client.sessionId)
     const player = this.state.players.get(client.sessionId)
     if (!member || !player) return
-    if (member.session.push) member.session.handle('endPush', { reason: 'left' }, Date.now())
+    member.session.resetPlace()
     Object.assign(player, { x: SPAWN.x, y: 0, z: SPAWN.z })
     member.lastPos = { x: SPAWN.x, z: SPAWN.z }
     member.lastPosAt = Date.now()
+    member.teleportedAt = Date.now()
     client.send('spawn', { x: SPAWN.x, z: SPAWN.z })
     this.syncPlayer(client.sessionId)
   }

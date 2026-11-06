@@ -49,12 +49,12 @@ function Boosts() {
 }
 
 /**
- * Bottom-left, as in the reference: Coins, then Fat, then (a little smaller) your
- * rebirths, with any running potions over them. Your Fat is the power behind a roll -
+ * Bottom-left, as in the reference: Wins, then Fat, then (a little smaller) your
+ * rebirths, with any running potions over them. Your Fat is the power behind a slam -
  * and you keep it all.
  */
 export function StatsPanel() {
-  // While a roll's Coins fly home, the counter counts up as they land.
+  // While a pad's Wins fly home, the counter counts up as they land.
   const coins = useGame((s) => s.coinsShown ?? s.profile.coins)
   const fat = useGame((s) => s.profile.fat)
   const rebirths = useGame((s) => s.profile.rebirths)

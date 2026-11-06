@@ -1,25 +1,25 @@
 import { FOODS, EGGS, PETS, SHOP, TRAIN_ZONES, WORLD_PORTALS, WORLDS } from '@shared/balance'
 import { formatNumber } from '@shared/format'
-import { isZoneUnlocked, TRACKS } from '@shared/logic'
+import { isZoneUnlocked } from '@shared/logic'
 import {
   AURA_STAND,
   FOOD_COUNTER,
-  FOOD_COURTS,
   FOOD_HUT,
   EGG_STANDS,
   FREE_REWARD,
+  GATE_Z,
+  HALL_TIERS,
   LEADERBOARDS,
   PORTALS,
   POTION_STAND,
   SPHINX_STAND,
   STATUE,
-  TRACK_START_Z,
-  zoneDeckRect,
 } from '@shared/world'
 
-import { WORLD } from '../push/course'
+import { WORLD } from '../stage/course'
 import { eggHeight } from '../world/eggs'
-import { zoneSignPosition, ZONE_THEMES } from '../world/foodCourts'
+import { FLOORS_FACE } from '../world/stageGate'
+import { PAD_THEMES, zoneSignPosition } from '../world/trainingPads'
 
 /**
  * Text styles, as gradients top-to-bottom: chunky, candy-bright signage.
@@ -37,28 +37,28 @@ export const TEXT = {
 
 const tint = (hex) => ['#ffffff', hex, hex]
 
-/** Zone labels' scale: sized to sit on their restaurant's sign board. */
-const ZONE_PX = 56
+/** Pad labels' scale: readable from the hall's front, not so big they pile up from the runway. */
+const ZONE_PX = 62
 
-/** A Food Court's name and how much more each bite there is worth: "Snack Corner / x1 FAT". */
+/** A training pad's multiplier, big, and its name: "x2 FAT / Diner Pad". */
 const zoneHead = (zone, theme) => [
-  { text: zone.name, size: 40, gradient: theme ? tint(theme.text) : undefined },
-  { text: `x${zone.mult} FAT`, size: 56, icon: 'fat', gradient: theme ? TEXT.white : undefined },
+  { text: `x${zone.mult} FAT`, size: 70, icon: 'fat', gradient: theme ? tint(theme.text) : undefined },
+  { text: zone.name, size: 36, gradient: theme ? TEXT.white : undefined },
 ]
 
 /**
- * A Food Court's sign: its name and multiplier, then whether you can eat there:
- * "Snack Corner / x1 FAT / FREE", "Dinky Diner / x2 FAT / 1 Rebirth",
- * "Frosty Parlor / x30 FAT / VERY OP! / 3.3M Coins"...
+ * A training pad's sign: its multiplier and name, then whether you can eat there:
+ * "x1.5 FAT / Snack Pad / FREE", "x2 FAT / Diner Pad / 1 Rebirth",
+ * "x30 FAT / Frosty Pad / VERY OP! / 3.3M Wins"...
  */
 export function zoneLabelSpec(index, unlocked) {
   const zone = TRAIN_ZONES[index]
-  const lines = zoneHead(zone, ZONE_THEMES[index])
+  const lines = zoneHead(zone, PAD_THEMES[index])
   if (unlocked) {
     lines.push({ text: zone.rebirths === 0 && !zone.product ? 'FREE' : 'UNLOCKED', size: 44, gradient: TEXT.green })
   } else if (zone.product) {
     lines.push({ text: zone.tag, size: 44, rainbow: true })
-    lines.push({ text: `${formatNumber(SHOP[zone.product].price)} Coins`, size: 40, icon: 'coin', gradient: TEXT.gold })
+    lines.push({ text: `${formatNumber(SHOP[zone.product].price)} Wins`, size: 40, icon: 'coin', gradient: TEXT.gold })
   } else {
     const word = zone.rebirths === 1 ? 'Rebirth' : 'Rebirths'
     lines.push({ text: `${zone.rebirths} ${word}`, size: 46, icon: 'rebirth', gradient: TEXT.green })
@@ -72,7 +72,7 @@ const zoneReserve = (index) => {
   const lines = zoneHead(zone)
   if (zone.product) {
     lines.push({ text: zone.tag, size: 44 })
-    lines.push({ text: `${formatNumber(SHOP[zone.product].price)} Coins`, size: 40, icon: 'coin' })
+    lines.push({ text: `${formatNumber(SHOP[zone.product].price)} Wins`, size: 40, icon: 'coin' })
   } else {
     lines.push({ text: 'UNLOCKED', size: 46, icon: 'rebirth' })
   }
@@ -81,16 +81,16 @@ const zoneReserve = (index) => {
 
 export function zoneLabels(profile) {
   return TRAIN_ZONES.map((zone, i) => {
-    // In front of the court's sign board, over its awning (towards the plaza); the
-    // four-line ones a touch higher.
+    // Over the pad's middle; the four-line ones a touch higher.
     const [x, y, z] = zoneSignPosition(i)
     return {
       id: `zone-${i}`,
       position: [x, y + (zone.product ? 0.35 : 0), z],
       spec: zoneLabelSpec(i, isZoneUnlocked(profile, i)),
       reserve: zoneReserve(i),
-      fade: 150,
-      near: 9,
+      // Faded out past the hall's front, so from the runway the far rows don't stack up.
+      fade: 70,
+      near: 6,
     }
   })
 }
@@ -110,11 +110,11 @@ export function eggLabels() {
     const lines = stand.big
       ? [
           { text: 'Demon Egg', size: 54, gradient: TEXT.red },
-          { text: `${formatNumber(egg.cost.coins)} Coins`, size: 46, icon: 'coin', gradient: TEXT.gold },
+          { text: `${formatNumber(egg.cost.coins)} Wins`, size: 46, icon: 'coin', gradient: TEXT.gold },
         ]
       : [
           { text: `${egg.name} Egg`, size: 50, fill: '#ffffff' },
-          { text: `${formatNumber(egg.cost.coins)} Coins`, size: 44, icon: 'coin', gradient: TEXT.gold },
+          { text: `${formatNumber(egg.cost.coins)} Wins`, size: 44, icon: 'coin', gradient: TEXT.gold },
         ]
     // Over the egg, a little towards its front (the plaza).
     const out = stand.big ? 1.2 : 0.6
@@ -132,7 +132,7 @@ export function sphinxLabelSpec(stock) {
   const mult = PETS.sphinx.mult
   return {
     lines: [
-      { text: `${formatNumber(SHOP.sphinx.price)} Coins`, size: 46, icon: 'coin', gradient: TEXT.gold },
+      { text: `${formatNumber(SHOP.sphinx.price)} Wins`, size: 46, icon: 'coin', gradient: TEXT.gold },
       { text: 'BEST IN GAME', size: 56, gradient: TEXT.red },
       { text: 'Sphinx', size: 76, fill: '#ffffff' },
       { text: `${formatNumber(mult * 100 - 100)}% BETTER`, size: 54, rainbow: true },
@@ -152,8 +152,9 @@ export function sphinxLabel(stock) {
   }
 }
 
-/** The ROLL ZONE sign's label id. */
-export const START_LABEL_ID = 'start-roll'
+/** The gate's label id, and the FLOORS BROKEN board's. */
+export const GATE_LABEL_ID = 'gate'
+export const FLOORS_LABEL_ID = 'floors-broken'
 
 /**
  * A big two-line sign over an area of the plaza: its name, and what it's for. The areas'
@@ -174,20 +175,19 @@ const title = (id, position, name, sub, gradient, fade = 120, px = 54) => ({
 
 /**
  * Where each area's section sign floats, so it reads from spawn (facing north): the
- * Food Courts' and the Food Shop's either side of the walkway over the street that
- * crosses it to both (left to the courts, right to the hut, in front of its counter);
- * and for what's behind you, over the egg row and the leaderboards.
+ * training hall's on the right, at the front corner of its tiers, and the Food Shop's
+ * on the left in front of its counter; and for what's behind you, over the egg row and
+ * the leaderboards.
  */
 const SECTION = (() => {
-  const courts = FOOD_COURTS.map((_, i) => zoneDeckRect(i))
-  const front = Math.max(...courts.map((r) => r.maxX))
+  const hall = HALL_TIERS[0]
   const eggs = EGG_STANDS.filter((s) => !s.big)
   const boards = LEADERBOARDS.reduce((a, b) => (Math.abs(b.x) < Math.abs(a.x) ? b : a))
   return {
-    // Over the street to the courts, near where it meets their own street.
-    courts: [front + 9.6, 5.6, FOOD_COUNTER.z],
-    // Over the street to the food shop, in front of its welcome patch and counter.
-    shop: [FOOD_COUNTER.x - FOOD_COUNTER.radius - 0.4, 5.8, FOOD_HUT.z],
+    // At the hall's front corner, nearest spawn.
+    courts: [hall.minX - 13, 6.4, hall.maxZ + 1],
+    // In front of the food shop's welcome patch and counter.
+    shop: [FOOD_COUNTER.x + FOOD_COUNTER.radius + 0.4, 5.8, FOOD_HUT.z],
     // Over the middle of the egg row, above the eggs' own signs.
     eggs: [eggs.reduce((s, e) => s + e.x, 0) / eggs.length, 8.9, eggs[0].z - 1],
     // Over the middle leaderboard.
@@ -195,11 +195,11 @@ const SECTION = (() => {
   }
 })()
 
-/** The section signs, the free reward, the portal, the statue's challenge and the ROLL ZONE's. */
+/** The section signs, the free reward, the portal, the statue's challenge, the gate's and the floors board's. */
 function placeLabels() {
   const portal = PORTALS[0]
   return [
-    title('title-zones', SECTION.courts, 'Food Courts', 'Sit at a table to eat for EXTRA FAT!', TEXT.orange, 150),
+    title('title-zones', SECTION.courts, 'Training Pads', 'Sit at a table to eat for EXTRA FAT!', TEXT.orange, 150),
     title('title-foods', SECTION.shop, 'Food Shop', 'Buy and Equip FOOD!', TEXT.blue, 150),
     title('title-auras', [AURA_STAND.x, 7.4, AURA_STAND.z - 3.2], 'Auras', 'Buy and Equip Auras!', TEXT.purple, 70, 74),
     title('title-potions', [POTION_STAND.x + 1, 5.6, POTION_STAND.z], 'Potions', 'Use and Buy Potions Here!', TEXT.green, 70, 74),
@@ -221,37 +221,50 @@ function placeLabels() {
     {
       id: 'statue',
       position: [STATUE.x, 13.8, STATUE.z],
-      spec: { lines: [{ text: 'HOW FAR CAN', size: 46, fill: '#ffffff' }, { text: 'YOU ROLL?', size: 62, gradient: TEXT.gold }], pxPerUnit: 40 },
+      spec: { lines: [{ text: 'HOW DEEP CAN', size: 46, fill: '#ffffff' }, { text: 'YOU SLAM?', size: 62, gradient: TEXT.gold }], pxPerUnit: 40 },
       fade: 140,
     },
     {
-      // (The id is older than the ROLL ZONE; the ticker relabels it by this name.)
-      id: START_LABEL_ID,
-      position: [0, 6.6, TRACK_START_Z + 0.5],
-      spec: startLabelSpec(),
-      // Room for the biggest first tape of any world.
-      reserve: WORLDS.map((_, world) => startLabelSpec(world)).reduce((a, b) => (b.lines[1].text.length > a.lines[1].text.length ? b : a)),
-      fade: 110,
+      id: GATE_LABEL_ID,
+      position: [0, 14.2, GATE_Z + 0.6],
+      spec: gateLabelSpec(),
+      reserve: WORLDS.map((_, world) => gateLabelSpec(world)).reduce((x, y) => (y.lines[1].text.length > x.lines[1].text.length ? y : x)),
+      fade: 160,
+    },
+    {
+      id: FLOORS_LABEL_ID,
+      position: [FLOORS_FACE.x, FLOORS_FACE.y, FLOORS_FACE.z + 0.2],
+      spec: floorsLabelSpec(0),
+      reserve: floorsLabelSpec(888888),
+      fade: 70,
+      near: 3,
     },
   ]
 }
 
-/**
- * The ROLL ZONE's sign, at the start of the track: what the first tape of the world
- * you're in (or `world`) takes. Tapes need every stage's Fat up to theirs, so the first
- * one's is the Fat it takes to smash any tape at all.
- */
-export function startLabelSpec(world = WORLD) {
-  const tape = (TRACKS[world] ?? TRACKS[0]).tapes[0]
+/** Over the STAGE gate: how many stages the world you're in (or `world`) goes down, and what to do. */
+export function gateLabelSpec(world = WORLD) {
+  const count = (WORLDS[world] ?? WORLDS[0]).stages.length
   return {
     lines: [
-      { text: 'ROLL ZONE', size: 54, gradient: TEXT.orange },
-      { text: `First tape needs ${formatNumber(tape.need)} Fat`, size: 38, icon: 'fat', gradient: TEXT.gold },
+      { text: `${count} STAGES DEEP`, size: 50, gradient: TEXT.orange },
+      { text: 'SLAM the floors to break them!', size: 34, fill: '#ffffff' },
     ],
-    pxPerUnit: 46,
+    pxPerUnit: 40,
   }
 }
 
+/** The FLOORS BROKEN board: how many floors you've broken, in all. */
+export function floorsLabelSpec(floors) {
+  return {
+    lines: [
+      { text: 'FLOORS BROKEN', size: 34, fill: '#ffffff' },
+      { text: formatNumber(floors), size: 78, gradient: TEXT.gold },
+      { text: 'by you', size: 30, gradient: TEXT.blue },
+    ],
+    pxPerUnit: 70,
+  }
+}
 
 /** "WORLD 2" for world index 1: worlds are numbered from 1 on their signs. */
 const worldNumber = (world) => `WORLD ${world + 1}`
@@ -279,7 +292,7 @@ export function portalLabelSpec(id, world) {
       { text: number, size: 64, gradient: TEXT.blue },
       ...(named ? [{ text: portal.name, size: 40, gradient: TEXT.purple }] : []),
       { text: `${WORLDS[portal.world].stages.length} NEW STAGES!`, size: 40, fill: '#ffffff' },
-      { text: `Need ${formatNumber(portal.coins)} Coins`, size: 40, icon: 'coin', gradient: TEXT.gold },
+      { text: `Need ${formatNumber(portal.coins)} Wins`, size: 40, icon: 'coin', gradient: TEXT.gold },
     ],
     pxPerUnit: 52,
   }

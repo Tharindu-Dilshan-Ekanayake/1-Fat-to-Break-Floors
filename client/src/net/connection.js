@@ -2,6 +2,7 @@ import { boxityEnv } from '../bloxity/env'
 import { reportPlayer, reportRoom } from '../bloxity/platform'
 import { getSDK, safeCall, waitForSDK } from '../bloxity/sdk'
 import { runtime } from '../game/runtime'
+import { leaveStagesQuietly, stage } from '../game/stage/stageControl'
 import { getGame } from '../store/game'
 import { setTransport } from './actions'
 import { handleServerEvent } from './events'
@@ -68,7 +69,7 @@ async function findDevServer() {
   for (const port of DEV_PORTS) {
     const url = `${window.location.protocol}//${window.location.hostname}:${port}`
     const health = await healthOf(url)
-    if (health?.ok && health.game === 'belly-buster') return url
+    if (health?.ok && health.game === '1-fat-to-break-floors') return url
   }
   return null
 }
@@ -160,10 +161,12 @@ function attachRoom(room, identity, Callbacks, relayRoomId = null) {
   room.onMessage('*', (type, payload) => {
     switch (type) {
       case 'spawn':
+        leaveStagesQuietly()
         runtime.player.position.set(payload.x, 0, payload.z)
         break
       case 'correct':
-        runtime.player.position.set(payload.x, payload.y, payload.z)
+        // On our way home from the stages, the fade puts us there: no snapping first.
+        if (!stage.returning) runtime.player.position.set(payload.x, payload.y, payload.z)
         break
       case 'stock':
         getGame().setSphinxStock(payload.sphinx)
@@ -203,6 +206,8 @@ function attachRoom(room, identity, Callbacks, relayRoomId = null) {
   let last = { x: NaN, y: NaN, z: NaN, a: '' }
   let lastSentAt = 0
   const posId = setInterval(() => {
+    // Being sent home from the stages: say nothing until we're there.
+    if (stage.returning) return
     const p = runtime.player.position
     const a = runtime.player.anim
     const now = performance.now()

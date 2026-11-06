@@ -3,12 +3,13 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 
 import { TUTORIAL } from '@shared/balance'
-import { benchSeat, EGG_STANDS, FOOD_COUNTER, FOOD_COURTS, groundHeightAt, PUSH_ZONE, seatYaw } from '@shared/world'
+import { benchSeat, EGG_STANDS, floorRect, FOOD_COUNTER, groundAt, padRect, TRAIN_PADS } from '@shared/world'
 
 import { getGame } from '../../store/game'
 import { createToyInstances, PropBuilder } from '../blocks'
 import { sharedMaterials, STYLE } from '../materials'
 import { runtime } from '../runtime'
+import { stage } from '../stage/stageControl'
 
 const MAX_CHEVRONS = 14
 const SPACING = 2.4
@@ -16,15 +17,19 @@ const SPACING = 2.4
 const ARRIVED = 3.5
 
 const egg = EGG_STANDS.find((s) => s.eggId === 'basic') ?? EGG_STANDS[0]
-/** The middle of the FREE court's bench, and the way its diners face (out over the table). */
-const seat = benchSeat(0, FOOD_COURTS[0].x, FOOD_COURTS[0].z)
-const facing = seatYaw(0)
+/** The FREE pad's chair nearest the runway, and the way its diner faces (over the table). */
+const seat = benchSeat(0, TRAIN_PADS[0].x - 5, TRAIN_PADS[0].z)
+const first = floorRect(0)
+const pad = padRect(0)
 
 /** Ground point each tutorial step leads to. */
 const TARGETS = {
-  push: { x: 0, z: (PUSH_ZONE.minZ + PUSH_ZONE.maxZ) / 2 },
-  // Just in front of the FREE court's bench, over its table.
-  zone0: { x: seat.x + Math.sin(facing) * 1.2, z: seat.z + Math.cos(facing) * 1.2 },
+  // The middle of floor 0, through the gate.
+  stage: { x: 0, z: (first.minZ + first.maxZ) / 2 },
+  // Room 0's WINS pad (shown once you're down there).
+  pad: { x: (pad.minX + pad.maxX) / 2, z: (pad.minZ + pad.maxZ) / 2 },
+  // The FREE pad's chair, just short of it.
+  zone0: { x: seat.x + Math.sin(seat.yaw) * -0.8, z: seat.z + Math.cos(seat.yaw) * -0.8 },
   // The spot in front of the food shop's counter, where the shop opens.
   foods: { x: FOOD_COUNTER.x, z: FOOD_COUNTER.z },
   // In front of the basic egg's stand, on the plaza side.
@@ -68,11 +73,13 @@ export function TutorialArrows() {
   useFrame((state) => {
     const instanced = ref.current
     if (!instanced) return
-    const { profile, pushing } = getGame()
+    const { profile } = getGame()
     const step = TUTORIAL[profile.tutorialStep]
     const target = step && TARGETS[step.target]
     const player = runtime.player.position
-    if (!target || pushing || runtime.camera.mode !== 'follow') {
+    // The pad is down in room 0: only shown there; everything else only in the lobby.
+    const here = step?.target === 'pad' ? stage.level === 0 : stage.level < 0
+    if (!target || !here || runtime.camera.mode !== 'follow') {
       instanced.count = 0
       return
     }
@@ -92,8 +99,8 @@ export function TutorialArrows() {
     for (let d = 1.6 + offset; d < dist - 1 && count < MAX_CHEVRONS; d += SPACING) {
       const x = player.x + ux * d
       const z = player.z + uz * d
-      // Over the Food Court decks, not under them.
-      _p.set(x, groundHeightAt(x, z) + 0.06, z)
+      // Over the training pads' decks, not under them; on the room's floor down below.
+      _p.set(x, groundAt(stage.level, x, z) + 0.06, z)
       // Fade in near the player, shrink near the goal.
       const scale = Math.min(1, (d - 1.2) / 1.5) * Math.min(1, (dist - d) / 2)
       _s.setScalar(Math.max(0.01, scale))

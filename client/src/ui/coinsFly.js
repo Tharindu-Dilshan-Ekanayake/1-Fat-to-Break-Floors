@@ -15,7 +15,7 @@ const SIZE = 54
 let layer = null
 const pool = []
 
-/** The flying coins' layer over everything: made the first time Coins fly, then reused. */
+/** The flying coins' layer over everything: made the first time Wins fly, then reused. */
 function coinSprites() {
   if (!layer) {
     layer = document.createElement('div')
@@ -37,7 +37,7 @@ const place = (el, x, y, scale) => {
   el.style.transform = `translate(${x - SIZE / 2}px, ${y - SIZE / 2}px) scale(${scale})`
 }
 
-/** The Coins counter gives a little jump as each coin lands in it. */
+/** The Wins counter gives a little jump as each coin lands in it. */
 function bump(el) {
   el.classList.remove('pp-bump')
   void el.offsetWidth
@@ -45,9 +45,9 @@ function bump(el) {
 }
 
 /**
- * Coins coming home: coins hop up off your character, then fly one after another into
- * the Coins counter, each landing with a chime a step higher than the last - and the
- * counter (held by holdCoins) counting up by its share. More Coins, more coins flying (up
+ * Wins coming home: coins hop up off your character, then fly one after another into
+ * the Wins counter, each landing with a chime a step higher than the last - and the
+ * counter (held by holdCoins) counting up by its share. More Wins, more coins flying (up
  * to MAX). DOM and CSS transitions only: nothing in the frame loop.
  */
 export function flyCoins(coins) {

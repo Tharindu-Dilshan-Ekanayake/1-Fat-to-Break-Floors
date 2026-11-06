@@ -2,11 +2,11 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { Color, InstancedMesh, Matrix4, PlaneGeometry, Quaternion, ShaderMaterial, Vector3 } from 'three'
 
-import { groundHeightAt, TRACK_START_Z } from '@shared/world'
+import { DROP, groundHeightAt, roomFloorY } from '@shared/world'
 
 import { useQuality } from '../store/quality'
 import { runtime } from './runtime'
-import { floorY, meterAtZ, tiltAt } from './push/path'
+import { stage } from './stage/stageControl'
 
 const MAX_BLOBS = 48
 
@@ -35,8 +35,7 @@ const fragmentShader = /* glsl */ `
 `
 
 const _m = new Matrix4()
-const _q = new Quaternion()
-const _xAxis = new Vector3(1, 0, 0)
+const _q = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -Math.PI / 2)
 const _p = new Vector3()
 const _s = new Vector3()
 
@@ -90,16 +89,15 @@ export function BlobShadows() {
       if (i >= MAX_BLOBS) break
       if (caster.visible === false) continue
       const p = caster.position
-      // Shrinks as the caster rises, like a real contact shadow. Up the track, it lies
-      // along the floor there: tipped on a slope, level on a SAFEZONE.
-      const onTrack = p.z < TRACK_START_Z
-      const meter = onTrack ? meterAtZ(p.z) : 0
-      const floor = onTrack ? floorY(meter) : groundHeightAt(p.x, p.z)
+      // Shrinks as the caster rises, like a real contact shadow. Down in the stages, on
+      // the floor of whichever room they're over (by height: rooms are a drop apart);
+      // none while they fall a long way.
+      const floor = p.y > -1 ? groundHeightAt(p.x, p.z) : roomFloorY(Math.max(0, Math.floor(-(p.y + 0.5) / DROP)))
       const lift = Math.max(0, p.y - floor)
+      if (lift > 8 || (stage.level >= 0 && Math.abs(floor - runtime.player.position.y) > 10)) continue
       const size = caster.size * Math.max(0.35, 1 - lift * 0.12)
       _p.set(p.x, floor + 0.04, p.z)
       _s.set(size, size, 1)
-      _q.setFromAxisAngle(_xAxis, -Math.PI / 2 + (onTrack ? tiltAt(meter) : 0))
       mesh.setMatrixAt(i, _m.compose(_p, _q, _s))
       i += 1
     }

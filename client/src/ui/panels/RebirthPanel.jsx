@@ -36,10 +36,10 @@ function StatCard({ icon, text, after }) {
   )
 }
 
-/** The best Food Court `rebirths` rebirths open (the ones bought with Coins aside). */
+/** The best Training Pad `rebirths` rebirths open (the ones bought with Wins aside). */
 const bestZone = (rebirths) => TRAIN_ZONES.filter((z) => !z.product && z.rebirths <= rebirths).at(-1)
 
-/** One rebirth's numbers: its max level, walking speed, Fat multiplier and best Food Court. */
+/** One rebirth's numbers: its max level, walking speed, Fat multiplier and best Training Pad. */
 function Column({ rebirths, after }) {
   return (
     <div className="flex flex-col items-center" style={{ gap: u(10) }}>
@@ -50,7 +50,7 @@ function Column({ rebirths, after }) {
         <StatCard icon="starGold" text={`Level ${levelCap(rebirths)}`} after={after} />
         <StatCard icon="fastForward" text={`${walkSpeed(levelCap(rebirths), rebirths).toFixed(1)} Speed`} after={after} />
         <StatCard icon="fat" text={`${formatMultiplier(rebirthMultiplier(rebirths))} Fat`} after={after} />
-        <StatCard icon="food" text={`${bestZone(rebirths).mult}X Food Court`} after={after} />
+        <StatCard icon="food" text={`${bestZone(rebirths).mult}X Training Pad`} after={after} />
       </div>
     </div>
   )
@@ -58,9 +58,9 @@ function Column({ rebirths, after }) {
 
 /**
  * Rebirth, as in the reference: this rebirth's numbers against the next one's (max
- * level, speed, Fat multiplier, best Food Court), your progress to max level, and the
- * Rebirth button once you're there - or Skip, for Coins, before then. Rebirth resets your
- * Fat and level; Coins, food and pets stay.
+ * level, speed, Fat multiplier, best Training Pad), your progress to max level, and the
+ * Rebirth button once you're there - or Skip, for Wins, before then. Rebirth resets your
+ * Fat and level; Wins, food and pets stay.
  */
 export function RebirthPanel() {
   const rebirths = useGame((s) => s.profile.rebirths)

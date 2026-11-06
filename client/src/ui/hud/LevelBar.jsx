@@ -54,7 +54,7 @@ function Bar() {
   )
 }
 
-/** A Fat pack: "+140" by a drumstick on the button, its price in Coins under the corner. */
+/** A Fat pack: "+140" by a drumstick on the button, its price in Wins under the corner. */
 function PackButton({ index, amount, price, afford }) {
   const buy = () => {
     if (getGame().profile.coins < price) {

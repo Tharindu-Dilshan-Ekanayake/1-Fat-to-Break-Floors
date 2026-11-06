@@ -3,7 +3,7 @@ import {
   AURA_STAND,
   eggStandNear,
   FREE_REWARD,
-  inPushZone,
+  inYard,
   atFoodCounter,
   portalAt,
   PORTALS,
@@ -17,20 +17,20 @@ import {
 import { sfx } from '../audio/sfx'
 import { actions } from '../net/actions'
 import { getGame, useGame } from '../store/game'
-import { portalLabelSpec, START_LABEL_ID, startLabelSpec, zoneLabelSpec } from './labels/lobbyLabels'
+import { FLOORS_LABEL_ID, floorsLabelSpec, GATE_LABEL_ID, gateLabelSpec, portalLabelSpec, zoneLabelSpec } from './labels/lobbyLabels'
 import { updateWorldLabel } from './labels/registry'
-import { setWorld } from './push/course'
-import { push } from './push/pushControl'
 import { runtime } from './runtime'
+import { setWorld } from './stage/course'
+import { leaveStagesQuietly, stage } from './stage/stageControl'
 
 const TICK_MS = 100
 
-const ZONE_KEYS = ['trainZone', 'trainZoneNear', 'sphinx', 'pushZone', 'foodShop', 'egg', 'portal', 'freeReward', 'auras', 'potions', 'climbBoulder']
-/** Down the track, none of the plaza's spots count (you're still standing on the ROLL ZONE there). */
-const MOUNTAIN = { trainZone: -1, trainZoneNear: -1, sphinx: false, pushZone: false, foodShop: false, egg: null, portal: null, freeReward: false, auras: false, potions: false }
+const ZONE_KEYS = ['trainZone', 'trainZoneNear', 'sphinx', 'yard', 'stage', 'foodShop', 'egg', 'portal', 'freeReward', 'auras', 'potions', 'climbBoulder']
+/** Down in the stages, none of the plaza's spots count. */
+const DOWN = { trainZone: -1, trainZoneNear: -1, sphinx: false, yard: false, foodShop: false, egg: null, portal: null, freeReward: false, auras: false, potions: false, climbBoulder: -1 }
 const sameZone = (a, b) => ZONE_KEYS.every((key) => a[key] === b[key])
 
-/** Locked Food Courts become solid walls for the controller; their signs say what's open. */
+/** Locked training pads become solid walls for the controller; their signs say what's open. */
 function syncZones(profile) {
   const walls = []
   for (let i = 0; i < ZONE_COUNT; i += 1) {
@@ -41,10 +41,10 @@ function syncZones(profile) {
   runtime.dynamicColliders = walls
 }
 
-/** Rolls the track of the world you're in, and puts that world's signs up in the lobby. */
+/** Dives the stages of the world you're in, and puts that world's signs up in the lobby. */
 function syncWorld(world) {
-  setWorld(world)
-  updateWorldLabel(START_LABEL_ID, startLabelSpec(world))
+  if (setWorld(world)) leaveStagesQuietly()
+  updateWorldLabel(GATE_LABEL_ID, gateLabelSpec(world))
   for (const portal of PORTALS) updateWorldLabel(`portal-${portal.id}`, portalLabelSpec(portal.id, world))
 }
 
@@ -55,7 +55,7 @@ const near = (stand, p) => Math.hypot(p.x - stand.x, p.z - stand.z) < stand.radi
 
 /**
  * The 10 Hz bridge between the frame-rate world and the UI: works out which zone the
- * player stands in, tells the authority about Food Court changes, and keeps locked-zone
+ * player stands in, tells the authority about Training Pad changes, and keeps locked-zone
  * walls in step with the profile. This - not the render loop - is what writes zone
  * state into the store, and only when something actually changed.
  *
@@ -67,10 +67,13 @@ export function startGameTicker() {
 
   syncZones(getGame().profile)
   syncWorld(getGame().profile.world)
+  updateWorldLabel(FLOORS_LABEL_ID, floorsLabelSpec(getGame().profile.stats.floors ?? 0))
   const unsubscribe = useGame.subscribe((state, prev) => {
     if (state.profile === prev.profile) return
-    // Before React renders the new world: its mountain is built from this (GameScene).
+    // Before React renders the new world: its stages are built from this (GameScene).
     if (state.profile.world !== prev.profile.world) syncWorld(state.profile.world)
+    const floors = state.profile.stats.floors ?? 0
+    if (floors !== (prev.profile.stats.floors ?? 0)) updateWorldLabel(FLOORS_LABEL_ID, floorsLabelSpec(floors))
     const key = zoneKey(state.profile)
     if (key === lastKey) return
     lastKey = key
@@ -81,15 +84,17 @@ export function startGameTicker() {
     const game = getGame()
     const p = runtime.player.position
     const egg = eggStandNear(p.x, p.z)
-    const zone = push.active
-      ? { ...MOUNTAIN, climbBoulder: -1 }
+    const zone = stage.level >= 0
+      ? { ...DOWN, stage: stage.level }
       : {
-          // Eating at a Food Court is sitting on its bench.
+          // Eating at a training pad is sitting on one of its chairs.
           trainZone: runtime.player.bench,
           // Standing at a zone's edge (a locked one's wall stops you there).
           trainZoneNear: zoneAt(p.x, p.z, 1.6),
           sphinx: Math.hypot(p.x - SPHINX_STAND.x, p.z - SPHINX_STAND.z) < 5.5,
-          pushZone: inPushZone(p.x, p.z),
+          // Through the gate: the yard, and floor 0.
+          yard: inYard(p.x, p.z),
+          stage: -1,
           foodShop: atFoodCounter(p.x, p.z),
           egg: egg ? egg.eggId : null,
           portal: portalAt(p.x, p.z)?.id ?? null,

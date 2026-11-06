@@ -21,7 +21,7 @@ import {
   RARITIES,
   REBIRTH_SKIP_RUNS,
   rebirthMultiplier,
-  SAFE_LENGTH,
+  SLAMS_PER_FLOOR,
   SHOP,
   TRAIN_INTERVAL,
   TRAIN_ZONES,
@@ -48,9 +48,9 @@ export function createProfile(id, name) {
     v: PROFILE_VERSION,
     id,
     name,
-    /** The Fat you carry now: your belly's size, and the fuel for your next run. */
+    /** The Fat you carry now: your belly's size, and how hard you slam. */
     fat: 0,
-    /** Every bit of Fat eaten since your last rebirth (a run doesn't take it back): your level. */
+    /** Every bit of Fat eaten since your last rebirth (slamming doesn't take it back): your level. */
     eaten: 0,
     coins: 0,
     rebirths: 0,
@@ -70,7 +70,8 @@ export function createProfile(id, name) {
     badges: [],
     /** The world you're in: an index into WORLDS. */
     world: 0,
-    stats: { runs: 0, bites: 0, tapes: 0, bestMeter: 0, playtime: 0, bestFat: 0, tops: 0 },
+    /** `runs` dives (floor 0 broken), `floors` floors broken in all, `bestFloor` the deepest stage reached (1 = the first). */
+    stats: { runs: 0, bites: 0, floors: 0, bestFloor: 0, playtime: 0, bestFat: 0, tops: 0 },
     lastZone: -1,
     lastSeen: 0,
     settings: { autoRebirth: false },
@@ -193,10 +194,10 @@ export function fatBoostMultiplier(profile, now) {
   return (passes.fatX2 ? 2 : 1) * (passes.fatX3 ? 3 : 1) * (passes.vip ? 1.5 : 1) * (isBoostActive(profile, 'fat', now) ? 2 : 1)
 }
 
-/** The aura you wear multiplies your Coins. */
+/** The aura you wear multiplies your Wins. */
 export const auraMultiplier = (profile) => AURAS[profile.equippedAura]?.coins ?? 1
 
-/** The x2 and x3 Coins passes, VIP, the Coins potion and your aura; they all stack. */
+/** The x2 and x3 Wins passes, VIP, the Wins potion and your aura; they all stack. */
 export function coinsMultiplier(profile, now) {
   const passes = profile.passes
   return (passes.coinsX2 ? 2 : 1) * (passes.coinsX3 ? 3 : 1) * (passes.vip ? 1.5 : 1) * (isBoostActive(profile, 'coins', now) ? 2 : 1) * auraMultiplier(profile)
@@ -209,7 +210,7 @@ export function gainMultiplier(profile, now) {
 
 export const foodPower = (profile) => foodById(profile.equippedFood).power
 
-/** Fat from one bite of your food, sat at Food Court `zone` (-1 = none). */
+/** Fat from one bite of your food, sat at training pad `zone` (-1 = none). */
 export function biteGain(profile, zone, now) {
   const zoneMult = zone >= 0 && TRAIN_ZONES[zone] ? TRAIN_ZONES[zone].mult : 1
   return tidy(BASE_GAIN * foodPower(profile) * zoneMult * gainMultiplier(profile, now))
@@ -219,7 +220,7 @@ export function biteGain(profile, zone, now) {
 
 /**
  * Banks a Fat gain - on your belly, and towards your level. Fat keeps piling on at max
- * level (it's your fuel for the run); only the level stops, at the rebirth cap.
+ * level (it's what you slam with); only the level stops, at the rebirth cap.
  */
 function addFat(profile, gain) {
   const cap = levelCap(profile.rebirths)
@@ -232,21 +233,21 @@ function addFat(profile, gain) {
   return { gain: added, leveledUp: profile.level > before, maxed: profile.level >= cap }
 }
 
-/** One bite (a click), at Food Court `zone` or -1. */
+/** One bite (a click), at training pad `zone` or -1. */
 export function applyBite(profile, zone, now) {
   profile.stats.bites += 1
   return { ok: true, ...addFat(profile, biteGain(profile, zone, now)) }
 }
 
-/** One automatic bite sat at Food Court `index`. */
+/** One automatic bite sat at training pad `index`. */
 export function applyTrain(profile, index, now) {
-  if (!isZoneUnlocked(profile, index)) return { ok: false, error: 'Food Court locked' }
+  if (!isZoneUnlocked(profile, index)) return { ok: false, error: 'Training pad locked' }
   profile.lastZone = index
   return { ok: true, ...addFat(profile, biteGain(profile, index, now)) }
 }
 
 
-/** Rebirth: +1 rebirth; Fat, what you've eaten and levels reset (Coins, foods and pets stay). */
+/** Rebirth: +1 rebirth; Fat, what you've eaten and levels reset (Wins, foods and pets stay). */
 export function applyRebirth(profile) {
   if (!isMaxLevel(profile)) return { ok: false, error: `Reach level ${levelCap(profile.rebirths)} first!` }
   profile.rebirths += 1
@@ -257,112 +258,94 @@ export function applyRebirth(profile) {
   return { ok: true, rebirths: profile.rebirths }
 }
 
-// --- The tape tracks ------------------------------------------------------------------
+// --- The stages ------------------------------------------------------------------------
 
 /**
- * World `index`'s track: its stages from the start down, each a slope with a TAPE across
- * its end and a flat checkpoint past it (all but the last, whose tape is THE END). Track
- * metre m is measured along it, down the slopes and across the flats alike, from the
- * start of the first slope.
- *
- * Stage i's tape takes its `need` Fat to smash: a roll with `power` Fat smashes every
- * tape from the first up to the last it's enough for (`tapesFor`), and is stopped dead
- * at the next (`reachOf`: that tape's metre), or rolls on to the end.
+ * World `index`'s stages: floor after floor, each with its room under it (world.js has
+ * where). Floor i takes its stage's `hp` to break, a slam at a time - every slam knocks
+ * your Fat off it - and its room's WINS pad pays its `wins`.
  */
-export function makeTrack(world, index) {
+export function makeStages(world, index) {
   const stages = world.stages
-  const last = stages.length - 1
-  /** Metre where each stage's slope starts: past the slopes and checkpoints below it. */
-  const starts = stages.map((_, i) => stages.slice(0, i).reduce((sum, stage) => sum + stage.length + SAFE_LENGTH, 0))
-  const stageStart = (i) => starts[i]
-  const stageTop = (i) => starts[i] + stages[i].length
-  const length = stageTop(last)
-  const stageAt = (meter) => {
-    for (let i = 0; i < last; i += 1) if (meter < stageTop(i)) return i
-    return last
-  }
-  /** How many tapes `fat` smashes on a run, one after the other from the first. */
-  const tapesFor = (fat) => {
+  /**
+   * How many floors in a row, from the first, `fat` breaks in good time: SLAMS_PER_FLOOR
+   * slams or fewer each. (More slams break any floor in the end; this is what the game's
+   * prices reckon a dive on that Fat gets you.)
+   */
+  const reachFor = (fat) => {
     let n = 0
-    while (n < stages.length && fat >= stages[n].need) n += 1
+    while (n < stages.length && fat * SLAMS_PER_FLOOR >= stages[n].hp) n += 1
     return n
   }
-  /** Where a roll with `power` Fat is stopped: at the first tape too strong for it, or the end. */
-  const reachOf = (power) => {
-    const n = tapesFor(power)
-    return n < stages.length ? stageTop(n) : length
-  }
-  // The tapes, one across the end of every slope, each taking its stage's need to smash
-  // and paying its Coins.
-  const tapes = stages.map((stage, i) => ({ stage: i, meter: stageTop(i), coins: stage.coins, need: stage.need }))
   return {
     index,
     world,
     stages,
-    /** From the foot of the first slope to the top of the last (THE TOP). */
-    length,
-    /** Metres of slope below each stage's: the slopes of every stage before it. */
-    slopesBelow: stages.map((_, i) => stages.slice(0, i).reduce((sum, stage) => sum + stage.length, 0)),
-    stageStart,
-    /** Metre at the top of stage `i`'s slope, where its tape is (THE TOP, for the last). */
-    stageTop,
-    /** Metre where the flat checkpoint below stage `i` (i >= 1) starts: its tape's. */
-    safeStart: (i) => stageTop(i - 1),
-    /** Index of the stage metre `meter` is in. A checkpoint counts as the stage it leads up to. */
-    stageAt,
-    /** Whether metre `meter` is on a slope (not the plaza, a checkpoint or the end). */
-    isSlope: (meter) => meter > 0 && meter < length && meter > stageStart(stageAt(meter)),
-    reachOf,
-    tapesFor,
-    tapes,
-    /** Coins (before multipliers) the tapes of a run with `fat` pay. */
-    runCoins: (fat) => tapes.slice(0, tapesFor(fat)).reduce((sum, tape) => sum + tape.coins, 0),
+    count: stages.length,
+    reachFor,
+    /** Wins (before multipliers) of a dive on `fat` Fat: the pad of the deepest room it reaches in good time. */
+    runWins: (fat) => {
+      const n = reachFor(fat)
+      return n > 0 ? stages[n - 1].wins : 0
+    },
   }
 }
 
-/** Every world's track, by world index. */
-export const TRACKS = WORLDS.map(makeTrack)
+/** Every world's stages, by world index. */
+export const STAGE_SETS = WORLDS.map(makeStages)
 
-/** The track of the world you're in. */
-export const trackOf = (profile) => TRACKS[profile.world] ?? TRACKS[0]
+/** The stages of the world you're in. */
+export const stagesOf = (profile) => STAGE_SETS[profile.world] ?? STAGE_SETS[0]
 
-/** Whether you may go to world `world`: World 1 always; past it, once you've the Coins (or have been). */
+/** What one slam knocks off a floor: all your Fat. */
+export const slamDamage = (profile) => Math.max(0, profile.fat)
+
+/** Slams `fat` takes to break a floor of `hp` (Infinity with no Fat). */
+export const slamsToBreak = (hp, fat) => (fat > 0 ? Math.max(1, Math.ceil(hp / fat - 1e-9)) : Infinity)
+
+/** What stage `stage`'s WINS pad pays you now, with every Wins boost you have. */
+export function padWins(profile, stage, now) {
+  const info = stagesOf(profile).stages[stage]
+  return info ? Math.max(1, Math.round(info.wins * coinsMultiplier(profile, now))) : 0
+}
+
+/** Whether you may go to world `world`: World 1 always; past it, once you've the Wins (or have been). */
 export const worldUnlocked = (profile, world) =>
   world === 0 || (WORLDS[world] && (profile.badges.includes(WORLDS[world].id) || profile.coins >= WORLDS[world].coins))
 
-/** Coins (before multipliers) of a run on your max level's Fat, in your world: what packs and skips cost in. */
-export const maxRunCoins = (profile) => trackOf(profile).runCoins(fatForLevel(levelCap(profile.rebirths)))
+/** Wins (before multipliers) of a dive on your max level's Fat, in your world: what packs and skips cost in. */
+export const maxRunCoins = (profile) => stagesOf(profile).runWins(fatForLevel(levelCap(profile.rebirths)))
 
 /**
  * The three Fat packs as they stand for you now: `[{ amount, price }]`. Both follow
- * the Fat your next level needs, and the Coins a run on that much Fat pays.
+ * the Fat your next level needs, and the Wins a dive on that much Fat pays.
  */
 export function fatPacks(profile) {
   const next = fatForLevel(profile.level + 1)
-  const coins = trackOf(profile).runCoins(next)
+  const coins = stagesOf(profile).runWins(next)
   return FAT_PACKS.map((pack) => ({
     amount: niceRound(Math.max(10, next * pack.share)),
     price: niceRound(Math.max(5, coins * pack.runs)),
   }))
 }
 
-/** Buys Fat pack `index` with Coins. */
+/** Buys Fat pack `index` with Wins. */
 export function buyFatPack(profile, index) {
   const pack = fatPacks(profile)[index]
   if (!pack) return { ok: false, error: 'Unknown pack' }
-  if (profile.coins < pack.price) return { ok: false, error: 'Not enough Coins!' }
+  if (profile.coins < pack.price) return { ok: false, error: 'Not enough Wins!' }
   profile.coins -= pack.price
   addFat(profile, pack.amount)
   return { ok: true, amount: pack.amount }
 }
 
-/** Coins to rebirth now without reaching max level first. */
+/** Wins to rebirth now without reaching max level first. */
 export const rebirthSkipPrice = (profile) => niceRound(Math.max(50, maxRunCoins(profile) * REBIRTH_SKIP_RUNS))
 
 export function skipRebirth(profile) {
   if (isMaxLevel(profile)) return applyRebirth(profile)
   const price = rebirthSkipPrice(profile)
-  if (profile.coins < price) return { ok: false, error: 'Not enough Coins!' }
+  if (profile.coins < price) return { ok: false, error: 'Not enough Wins!' }
   profile.coins -= price
   profile.level = levelCap(profile.rebirths)
   return applyRebirth(profile)
@@ -378,7 +361,7 @@ export function buyFood(profile, foodId) {
   if (previous && !profile.ownedFoods.includes(previous.id)) {
     return { ok: false, error: `Buy the ${previous.name} first!` }
   }
-  if (profile.coins < food.cost) return { ok: false, error: 'Not enough Coins!' }
+  if (profile.coins < food.cost) return { ok: false, error: 'Not enough Wins!' }
   profile.coins -= food.cost
   profile.ownedFoods.push(foodId)
   profile.equippedFood = foodId
@@ -427,7 +410,7 @@ export function addPet(profile, petId) {
 }
 
 /**
- * Hatches `count` eggs. `paid` says how: 'coins' charges the egg's Coins price, 'item'
+ * Hatches `count` eggs. `paid` says how: 'coins' charges the egg's Wins price, 'item'
  * consumes an egg item, 'free' is for reward grants already paid for.
  */
 export function hatchEgg(profile, eggId, count = 1, { paid = 'coins', rand = Math.random } = {}) {
@@ -437,7 +420,7 @@ export function hatchEgg(profile, eggId, count = 1, { paid = 'coins', rand = Mat
   if (paid === 'coins') {
     if (!egg.cost.coins) return { ok: false, error: 'This egg is premium only' }
     const price = egg.cost.coins * count
-    if (profile.coins < price) return { ok: false, error: 'Not enough Coins!' }
+    if (profile.coins < price) return { ok: false, error: 'Not enough Wins!' }
     profile.coins -= price
   } else if (paid === 'item') {
     const itemId = Object.keys(ITEMS).find((k) => ITEMS[k].kind === 'egg' && ITEMS[k].egg === eggId)
@@ -577,12 +560,12 @@ export function claimFreeReward(profile, session, opts) {
 
 // --- Shop ---------------------------------------------------------------------------
 
-/** Buys a SHOP item with Coins. An aura is worn as soon as it's bought. */
+/** Buys a SHOP item with Wins. An aura is worn as soon as it's bought. */
 export function buyShopItem(profile, productId, opts = {}) {
   const item = SHOP[productId]
   if (!item) return { ok: false, error: 'Unknown item' }
   if (item.kind === 'pass' && profile.passes[productId]) return { ok: false, error: 'Already owned' }
-  if (profile.coins < item.price) return { ok: false, error: 'Not enough Coins!' }
+  if (profile.coins < item.price) return { ok: false, error: 'Not enough Wins!' }
   if (item.kind === 'pass') {
     profile.coins -= item.price
     profile.passes[productId] = true
@@ -596,7 +579,7 @@ export function buyShopItem(profile, productId, opts = {}) {
 
 // --- Offline progress -------------------------------------------------------------
 
-/** Fat eaten while away, if the player logged off sat at a Food Court. */
+/** Fat eaten while away, if the player logged off sat at a training pad. */
 export function applyOfflineProgress(profile, now) {
   const away = Math.min(OFFLINE_MAX_MS, now - (profile.lastSeen || now))
   if (profile.lastZone < 0 || away < OFFLINE_MIN_MS) return null
@@ -613,8 +596,8 @@ export function applyOfflineProgress(profile, now) {
 
 /** Advances the tutorial if `event` completes the current step. */
 export function advanceTutorial(profile, event) {
-  // The current step, or a later one done first (ran without eating at a table, say): the
-  // guide never asks for something you've already done.
+  // The current step, or a later one done first (slammed without eating at a table, say):
+  // the guide never asks for something you've already done.
   for (let i = profile.tutorialStep; i < TUTORIAL.length; i += 1) {
     const step = TUTORIAL[i]
     if (step.event === event && profile.fat >= (step.fat || 0)) {

@@ -320,7 +320,7 @@ export class LabelBatch {
   }
 
   /**
-   * Redraws one label in place (e.g. a pad going from "28 Coins" to "OWNED") - only if
+   * Redraws one label in place (e.g. a pad going from "28 Wins" to "OWNED") - only if
    * it now says something different: a redraw re-uploads its whole page to the GPU.
    */
   async update(id, spec) {
