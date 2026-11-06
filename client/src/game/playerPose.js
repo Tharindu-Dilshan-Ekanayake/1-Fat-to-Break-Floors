@@ -188,17 +188,65 @@ function stride(phase, ratio, bulk = 0) {
  * In the air: one knee up and the arms out on the way up; falling, the legs straighten
  * and reach down for the ground.
  */
-function airborne(vy) {
+function airborne(vy, w = 1) {
   const f = smooth(0, 1, clamp01((2 - vy) / 9))
-  add('LegL1', lerp(-1.3, -0.35, f), 0.08 * OUT_L, 0, 1)
-  add('LegL2', lerp(1.6, 0.25, f), 0, 0, 1)
-  add('LegR1', lerp(0.25, -0.1, f), 0.08 * OUT_R, 0, 1)
-  add('LegR2', lerp(0.5, 0.2, f), 0, 0, 1)
-  add('ArmL1', lerp(-0.35, -0.6, f), lerp(1.15, 1.45, f) * OUT_L, 0, 1)
-  add('ArmL2', -0.35, 0, 0, 1)
-  add('ArmR1', lerp(-0.25, -0.5, f), lerp(1.05, 1.35, f) * OUT_R, 0, 1)
-  add('ArmR2', -0.4, 0, 0, 1)
-  add('Spine1', lerp(-0.15, 0.06, f), 0, 0, 1)
+  add('LegL1', lerp(-1.3, -0.35, f), 0.08 * OUT_L, 0, w)
+  add('LegL2', lerp(1.6, 0.25, f), 0, 0, w)
+  add('LegR1', lerp(0.25, -0.1, f), 0.08 * OUT_R, 0, w)
+  add('LegR2', lerp(0.5, 0.2, f), 0, 0, w)
+  add('ArmL1', lerp(-0.35, -0.6, f), lerp(1.15, 1.45, f) * OUT_L, 0, w)
+  add('ArmL2', -0.35, 0, 0, w)
+  add('ArmR1', lerp(-0.25, -0.5, f), lerp(1.05, 1.35, f) * OUT_R, 0, w)
+  add('ArmR2', -0.4, 0, 0, w)
+  add('Spine1', lerp(-0.15, 0.06, f), 0, 0, w)
+}
+
+/**
+ * Winding up for a belly slam (and squashed by landing one): a deep squat, leaning in,
+ * arms swung back. `w` blends it in.
+ */
+function windUp(w) {
+  add('LegL1', -0.95, 0.12 * OUT_L, 0, w)
+  add('LegR1', -0.95, 0.12 * OUT_R, 0, w)
+  add('LegL2', 1.55, 0, 0, w)
+  add('LegR2', 1.55, 0, 0, w)
+  add('Spine1', -0.32, 0, 0, w)
+  add('Neck1', -0.22, 0, 0, w)
+  add('ArmL1', 0.85, 0.3 * OUT_L, 0, w)
+  add('ArmR1', 0.85, 0.3 * OUT_R, 0, w)
+  add('ArmL2', -0.3, 0, 0, w)
+  add('ArmR2', -0.3, 0, 0, w)
+  pose.lift -= 0.42 * w
+}
+
+/** Leaping up for a belly slam: arms flung straight up, back arched, legs together. */
+function leaping(w) {
+  add('ArmL1', -2.85, 0.28 * OUT_L, 0, w)
+  add('ArmR1', -2.85, 0.28 * OUT_R, 0, w)
+  add('ArmL2', -0.1, 0, 0, w)
+  add('ArmR2', -0.1, 0, 0, w)
+  add('LegL1', -0.2, 0.04 * OUT_L, 0, w)
+  add('LegR1', -0.2, 0.04 * OUT_R, 0, w)
+  add('LegL2', 0.45, 0, 0, w)
+  add('LegR2', 0.45, 0, 0, w)
+  add('Spine1', 0.16, 0, 0, w)
+  add('Neck1', -0.3, 0, 0, w)
+}
+
+/** Falling a long way (through a floor): arms windmilling, legs kicking, in a panic. */
+function flailing(time, w) {
+  const a = time * 17
+  const k = time * 13
+  add('ArmL1', -1.7 + Math.sin(a) * 1.25, 1.1 * OUT_L, 0, w)
+  add('ArmR1', -1.7 + Math.sin(a + Math.PI) * 1.25, 1.1 * OUT_R, 0, w)
+  add('ArmL2', -0.5 + Math.sin(a + 1) * 0.4, 0, 0, w)
+  add('ArmR2', -0.5 + Math.sin(a + 4) * 0.4, 0, 0, w)
+  add('LegL1', -0.45 + Math.sin(k) * 0.65, 0.12 * OUT_L, 0, w)
+  add('LegR1', -0.45 - Math.sin(k) * 0.65, 0.12 * OUT_R, 0, w)
+  add('LegL2', 0.7 + Math.max(0, Math.sin(k)) * 0.6, 0, 0, w)
+  add('LegR2', 0.7 + Math.max(0, -Math.sin(k)) * 0.6, 0, 0, w)
+  add('Spine1', 0.25, Math.sin(time * 9) * 0.1, 0, w)
+  add('Neck1', -0.35, 0, Math.sin(time * 11) * 0.15, w)
 }
 
 /**
@@ -313,7 +361,7 @@ function chubby(bulk, w = 1) {
 const SIT_DROP = 0.26
 
 /**
- * Sat on a bench at a Food Court table: thighs out level in front, shins straight down
+ * Sat on a bench at a Training Pad table: thighs out level in front, shins straight down
  * to the floor, sitting up, the left hand resting on its knee (the right one eats).
  */
 function seated(time) {
@@ -364,10 +412,10 @@ function dancing(time, w) {
   pose.lift += Math.abs(a) * 0.14 * w
 }
 
-/** Seconds per automatic bite at a Food Court (TRAIN_INTERVAL in balance.js). */
+/** Seconds per automatic bite at a Training Pad (TRAIN_INTERVAL in balance.js). */
 const TRAIN_PERIOD = 0.8
 
-/** How far (0-1) through a table bite you are at `time` (seconds): the Food Court loop. */
+/** How far (0-1) through a table bite you are at `time` (seconds): the Training Pad loop. */
 export const tableBiteAt = (time) => (time / TRAIN_PERIOD) % 1
 
 /**
@@ -378,8 +426,10 @@ export const tableBiteAt = (time) => (time / TRAIN_PERIOD) % 1
  *   the ball), `tired` (0-1) sits you down in a dizzy heap when the Fat runs out and
  *   `cheer` (0-1) is the celebration at the end. Otherwise `curl` (0-1) is a bite in
  *   progress (0 = none), `sitting` sits you on a bench and `training` eats on a loop, at
- *   a Food Court's table, and `dance` (0-1) is the win dance. `bulk` (0-1, how fat you
- *   are) rests your arms out on your belly.
+ *   a Training Pad's table, and `dance` (0-1) is the win dance. `bulk` (0-1, how fat you
+ *   are) rests your arms out on your belly. The belly slam: `crouch` (0-1) winds up for it
+ *   (and squashes you landing it), `rising` (0-1) is the leap up - then `rolling` curls you
+ *   up for the drop - and `falling` (0-1) flails all the way down through a broken floor.
  */
 export function computePose(motion) {
   const {
@@ -403,6 +453,9 @@ export function computePose(motion) {
   /** 0-1 through a full-belly pat after a feed (0: not patting), and how much of it shows. */
   const pat = motion.pat ?? 0
   const patWeight = motion.patWeight ?? 0
+  const crouch = clamp01(motion.crouch ?? 0)
+  const rising = clamp01(motion.rising ?? 0)
+  const falling = clamp01(motion.falling ?? 0)
   for (const name of POSED_BONES) {
     const b = pose.bones[name]
     b.swing = 0
@@ -434,8 +487,11 @@ export function computePose(motion) {
     if (dance > 0) dancing(time, dance)
     if (happy > 0) cheering(time, happy)
     if (patWeight > 0 && curl === 0) patting(pat, patWeight)
+    if (crouch > 0) windUp(crouch)
   } else {
-    airborne(vy)
+    airborne(vy, Math.max(0, 1 - rising - falling))
+    if (rising > 0) leaping(rising)
+    if (falling > 0) flailing(time, falling)
   }
   chubby(bulk)
   if (training) eating(tableBiteAt(time), 1, bulk)

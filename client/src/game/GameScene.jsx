@@ -37,9 +37,9 @@ const DevPerf = import.meta.env.DEV
   : null
 const showDevPerf = import.meta.env.DEV && new URLSearchParams(window.location.search).has('perf')
 
-// The tape track down the valley is its own chunk, fetched once the lobby is on screen so
-// it never delays time-to-playable.
-const Push = lazy(() => import('./push/Push'))
+// The stages under the gate are their own chunk, fetched once the lobby is on screen so
+// they never delay time-to-playable.
+const Stages = lazy(() => import('./stage/Stages'))
 
 /** The longest the loading screen waits for your avatar before the game opens anyway. */
 const AVATAR_WAIT_MS = 10000
@@ -48,8 +48,8 @@ const AVATAR_WAIT_MS = 10000
  * The scene's start-up, in a component of its own so each step re-renders only this,
  * not the whole scene (seconds of work on a slow phone): every shader compiled
  * (ShaderWarmup - last in the scene, so everything's in it), then the first real frame
- * drawn (`onSceneIn`), then the tape track down the valley, fetched only now so it never
- * delays time-to-playable.
+ * drawn (`onSceneIn`), then the stages under the gate, fetched only now so they never
+ * delay time-to-playable.
  */
 function StartUp({ onSceneIn }) {
   const world = useGame((s) => s.profile.world)
@@ -61,8 +61,8 @@ function StartUp({ onSceneIn }) {
     <>
       {warmedUp && firstFrame && (
         <Suspense fallback={null}>
-          {/* Built afresh for each world's track (the ticker switches it first). */}
-          <Push key={world} />
+          {/* Built afresh for each world's stages (the ticker switches them first). */}
+          <Stages key={world} />
         </Suspense>
       )}
       <ShaderWarmup onDone={handleWarmedUp} />

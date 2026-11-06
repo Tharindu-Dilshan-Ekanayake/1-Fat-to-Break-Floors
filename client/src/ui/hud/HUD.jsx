@@ -4,17 +4,17 @@ import InteractPrompt from './InteractPrompt'
 import LeftMenu from './LeftMenu'
 import LevelBar from './LevelBar'
 import PassButtons from './PassButtons'
-import PushHud from './PushHud'
 import RebirthNotice from './RebirthNotice'
+import StageHud from './StageHud'
 import StatsPanel from './StatsPanel'
 import TopBar from './TopBar'
 import TopCenter from './TopCenter'
 
 /**
- * The heads-up display, laid out like the reference: the menu tiles on the left, Coins
- * and Fat bottom-left, the level bar and its Fat packs bottom-centre,
- * the FREE GIFT and the x2 passes on the right, and sound, leaderboards and your name
- * tag top-right. On a roll it clears out for the run's own HUD.
+ * The heads-up display: the menu tiles on the left, Wins and Fat bottom-left, the level
+ * bar and its Fat packs bottom-centre, the FREE GIFT and the x2 passes on the right, and
+ * sound, leaderboards and your name tag top-right. Through the gate, the floor ahead's
+ * HP across the top (StageHud).
  *
  * The root ignores pointer events so the canvas and joystick underneath keep working;
  * only the buttons themselves opt back in. While a panel is open the HUD steps aside,
@@ -39,7 +39,7 @@ export function HUD() {
         </div>
         <InteractPrompt />
         <EggPanel />
-        <PushHud />
+        <StageHud />
       </div>
     </div>
   )

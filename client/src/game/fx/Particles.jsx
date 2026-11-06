@@ -39,6 +39,10 @@ const PALETTES = {
   electric: ['#9ff3ff', '#ffffff', '#45c8ff', '#2f7dff'].map((c) => new Color(c)),
   /** Shreds of a smashed tape: silver. */
   tape: ['#e9ecf0', '#c3c9d1', '#ffffff', '#9aa3ad'].map((c) => new Color(c)),
+  /** Dust off a slammed floor. */
+  dust: ['#efe6d6', '#d2c4ac', '#ffffff', '#b3a58e'].map((c) => new Color(c)),
+  /** Chips of a slammed (or broken) floor: stone and earth. */
+  rubble: ['#a07a56', '#7d5b3e', '#c9a27a', '#8d8f96'].map((c) => new Color(c)),
 }
 
 /**

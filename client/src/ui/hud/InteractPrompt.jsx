@@ -13,7 +13,7 @@ import { GRADIENTS, u } from './style'
 
 /**
  * What standing on the current spot lets you do, if anything, in a word or two:
- * { action, price?, run, hold? } - `price` in Coins, shown with a coin. One at a time.
+ * { action, price?, run, hold? } - `price` in Wins, shown with a trophy. One at a time.
  */
 function usePrompt() {
   const atFoodShop = useGame((s) => s.zone.foodShop)
@@ -28,11 +28,6 @@ function usePrompt() {
   const atAuras = useGame((s) => s.zone.auras)
   const atPotions = useGame((s) => s.zone.potions)
   const openPanel = useGame((s) => s.openPanel)
-  const atRollZone = useGame((s) => s.zone.pushZone)
-  const hasFat = useGame((s) => s.profile.fat > 0)
-
-  // On the ROLL ZONE: hold to curl up and roll down the track - on the Fat you've eaten.
-  if (atRollZone) return hasFat ? { action: 'Roll!', run: () => actions.startPush(), hold: true } : { action: 'Eat food first!', run: null }
 
   // A world portal: walking in is what takes you.
   if (atPortal) {

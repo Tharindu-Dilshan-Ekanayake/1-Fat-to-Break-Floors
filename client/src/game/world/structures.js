@@ -12,7 +12,7 @@ import { PALETTE } from '../sceneStyle'
  * Static lobby structures, added as plain boxes to the world's shared BlockSet so they
  * render in the same single draw call as the mountains (and a few merged props, in the
  * world's one prop mesh): the food shop's hut, the champion's square round the statue,
- * the aura and potion stands, and the statue itself. (The Food Courts are in
+ * the aura and potion stands, and the statue itself. (The Training Pads are in
  * foodCourts.js, the trees and flower beds round the plaza in garden.js.)
  */
 
@@ -66,8 +66,8 @@ const HUT_TRIM = '#fff6ec'
 const HUT_WOOD = '#8a5a2e'
 const HUT_ROOF = '#e8322f'
 
-/** Which way the hut's counter faces: the plaza, west (yaw, 0 = +z). */
-const HUT_YAW = -Math.PI / 2
+/** Which way the hut's counter faces: the plaza (yaw, 0 = +z). */
+const HUT_YAW = FOOD_HUT.yaw
 /** A spot of the hut in its own terms - `u` across its front, `w` out in front of its middle - in the world: [x, z]. */
 const onHut = turned(FOOD_HUT.x, FOOD_HUT.z, HUT_YAW)
 /** Heights: the floor's top, the walls' top (where the roof sits), the roof's top. */
@@ -291,8 +291,8 @@ export function buildFoodHut(blocks, props, { detail = true, palette, decor = nu
  * paints it).
  */
 export const SQUARE_RADIUS = 6.5
-/** Which way the statue faces: west, down the cross street to spawn (yaw, 0 = +z). */
-const STATUE_YAW = -Math.PI / 2
+/** Which way the statue faces: down the cross street to spawn (yaw, 0 = +z). */
+const STATUE_YAW = STATUE.yaw
 /** The statue's plinth: its tiers' tops, bottom up, and the top tier's radius. */
 const PLINTH = { step: 0.25, drum: 1.05, band: 1.19, top: 1.54, cap: 1.66 }
 /**
@@ -347,10 +347,10 @@ export function flowerBed(blocks, props, round, x, z, radius, k, detail, palette
   }
 }
 
-/** A street lamp: a dark post on a base, a glowing lantern, a little roof. */
-export function streetLamp(blocks, x, z, light = '#fff3b0', post = LAMP_POST) {
+/** A street lamp: a post on a base (`postStyle` STRIPES for a candy cane), a glowing lantern, a little roof. */
+export function streetLamp(blocks, x, z, light = '#fff3b0', post = LAMP_POST, postStyle = STYLE.SMOOTH) {
   blocks.addOn(x, 0, z, 0.5, 0.3, 0.5, post, STYLE.SMOOTH)
-  blocks.addOn(x, 0.3, z, 0.2, 3.1, 0.2, post, STYLE.SMOOTH)
+  blocks.addOn(x, 0.3, z, 0.24, 3.1, 0.24, post, postStyle)
   blocks.add(x, 3.7, z, 0.5, 0.6, 0.5, light, STYLE.GLOW, 0.785)
   blocks.add(x, 4.08, z, 0.72, 0.14, 0.72, '#2b2f38', STYLE.SMOOTH, 0.785)
 }
@@ -387,7 +387,7 @@ export function buildTownSquare(blocks, props, { detail = true, palette, decor =
   const front = turned(x, z, STATUE_YAW)
   for (let k = 0; k < 4; k += 1) {
     const a = Math.PI / 4 + (k * Math.PI) / 2
-    streetLamp(blocks, x + Math.cos(a) * (SQUARE_RADIUS - 0.9), z + Math.sin(a) * (SQUARE_RADIUS - 0.9), palette.lamps[k % 2], palette.lampPost)
+    streetLamp(blocks, x + Math.cos(a) * (SQUARE_RADIUS - 0.9), z + Math.sin(a) * (SQUARE_RADIUS - 0.9), palette.lamps[k % 2], palette.lampPost, palette.lampPostStyle)
   }
   // Benches behind the statue, facing it.
   for (const side of [-1, 1]) {

@@ -7,11 +7,12 @@ import { isZoneUnlocked } from '@shared/logic'
 import {
   benchAt,
   benchSeat,
-  clampToWalkable,
+  clampToLevel,
   groundHeightAt,
-  seatYaw,
+  onFloor,
+  padHeight,
+  roomFloorY,
   STATIC_COLLIDERS,
-  ZONE_HEIGHT,
   zoneAt,
 } from '@shared/world'
 
@@ -28,8 +29,8 @@ import PlayerAvatar, { AvatarShaderWarmup } from './PlayerAvatar'
 import { bulkFor, chewAt, FAT_SCALE, growBody, tableBiteAt } from './playerPose'
 import { emoteMotion, stopEmote } from './emotes'
 import { burst } from './fx/fxQueue'
-import { ballRadius, trackPoint } from './push/path'
-import { advancePush, push } from './push/pushControl'
+import { STAGE_COUNT } from './stage/course'
+import { claimPad, noteHungry, onPadNow, slamImpact, stage } from './stage/stageControl'
 import { runtime } from './runtime'
 import useKeyboard from './useKeyboard'
 
@@ -50,14 +51,28 @@ const CURL_MS = 640
 const BITE_HOLD = 0.45
 /** Where in a bite you swallow: GULP. */
 const GULP_AT = 0.82
-/** Facing down the track as you roll; at the end, turned to the camera at your side. */
-const DOWNHILL_YAW = Math.PI
-const CHEER_YAW = Math.PI / 2
-/** At the end, the cheer comes in over this long; worn out, the dizzy heap over this. */
-const CHEER_IN = 0.5
-const TIRED_IN = 0.45
 /** Curled up, the middle of the ball is this far above your feet's spot when standing (skinny -> fat). */
 const BALL_MIDDLE = [0.95, 1.2]
+/** Curled up, a body of `bulk` (0 skinny - 1 as fat as can be) is a ball about this round. */
+const ballRadius = (bulk = 0) => 0.46 + 0.3 * Math.min(1, Math.max(0, bulk))
+/**
+ * The belly slam, on a floor of the stages: up you go (SLAM_JUMP m/s), and over the top
+ * you curl into a ball and come down belly first (POUND_SPEED m/s) - the floor takes a
+ * hit where you land. Then a beat (SLAM_REST_MS) and up again, for as long as you stand
+ * on it. Moving while you slam is slower (SLAM_STEER).
+ */
+const SLAM_JUMP = 9.5
+const POUND_SPEED = 24
+const SLAM_REST_MS = 90
+/** The wind-up before each slam's leap (a squat), and the squash after landing one: how long each lasts. */
+const SLAM_CROUCH_MS = 110
+const SLAM_SQUASH_MS = 140
+/** Falling faster than this (and not slamming), you flail. */
+const FLAIL_SPEED = 9
+const SLAM_STEER = 0.55
+/** Landing faster than this (falling through a floor) is a big landing: a thump, a wobble and stars. */
+const BIG_LANDING = 20
+const DIZZY_MS = 1100
 /**
  * The belly's jelly wobble - a spring, kicked by every bite (when the food reaches your
  * mouth) and by every bit of growth, and by landing from a jump: squashes you down and
@@ -112,8 +127,6 @@ const _targetQuat = new Quaternion()
 const _up = new Vector3(0, 1, 0)
 const _clamped = { x: 0, z: 0 }
 const _seatAt = { x: 0, z: 0 }
-/** Steering, handed to the roll each frame. */
-const pushInput = { side: 0 }
 const TWO_PI = Math.PI * 2
 
 /** Pushes a circle out of an axis-aligned rect. Returns true on contact. */
@@ -154,13 +167,13 @@ function pushOut(pos, rect) {
  * rectangular walls, which a circle-vs-rect push-out handles exactly. That saves the
  * ~2 MB Rapier WASM download and keeps the active rigid body count at zero.
  *
- * In the plaza you walk, and take a bite of your food when you click. Step onto a Food
- * Court's deck and you walk yourself to its long bench, sit and eat on a loop, until you
- * move or jump (walking into the bench sits you too). The fatter you are, the rounder
- * (and a little bigger) you're drawn. On the ROLL ZONE you curl up into a ball and roll
- * down the track - sideways steers - shrinking as the roll burns your Fat. Your logical
- * position stays on the ROLL ZONE all the while (it's what the server checks); only the
- * drawn character goes down the track.
+ * In the plaza you walk, and take a bite of your food when you click. Step onto a
+ * training pad's deck and you walk yourself to its nearest chair, sit and eat on a loop,
+ * until you move or jump (walking into a chair sits you too). The fatter you are, the
+ * rounder (and a little bigger) you're drawn. Through the STAGE gate, standing on the
+ * floor ahead you slam it, over and over - up, curl into a ball, down belly first - and
+ * when it breaks you fall into the room under it, whose walls and floor you're in from
+ * then on (`stage.level`). Step on a room's WINS pad and it pays and sends you home.
  *
  * Reads and writes `runtime.player`; never touches React state per frame.
  *
@@ -184,7 +197,7 @@ export function Player({ onAvatarReady }) {
   const jiggle = useRef({ x: 0, v: 0, bite: 0, eaten: 0, bulk: -1, puff: 0 })
   /** The click bite in progress: when it (notionally) started, the last click, how hard it was chomping. */
   const biting = useRef({ start: -1e9, ate: 0, chew: 0, t: 1, end: 0, beat: 1 })
-  /** The dizzy stars round your head when a roll wears you out. */
+  /** The dizzy stars round your head after a big landing. */
   const starsRef = useRef(null)
   const stars = useMemo(() => {
     const mesh = createBoxInstances(STARS, sharedMaterials().toy, STYLE.GLOW)
@@ -194,16 +207,22 @@ export function Player({ onAvatarReady }) {
     return mesh
   }, [])
   useEffect(() => () => disposeBlocks(stars), [stars])
-  /** How curled up you're drawn (1 rolling, 0 standing), and how far round. */
+  /** How curled up you're drawn (1 a ball, 0 standing), and how far round. */
   const curled = useRef(0)
   const shownRoll = useRef(0)
+  /**
+   * The slam in progress: 0 none, 3 winding up (a squat, until `crouchUntil`), 1 going
+   * up, 2 coming down belly first; when the next may start, and when the last landed.
+   */
+  const slam = useRef({ phase: 0, restUntil: 0, crouchUntil: 0, landAt: 0 })
+  /** Seeing stars after a big landing, until this performance.now(). */
+  const dizzyUntil = useRef(0)
   const handRef = useRef(null)
   const heldRef = useRef(null)
   const keys = useKeyboard()
   const velocity = useRef(null)
   if (velocity.current === null) velocity.current = new Vector3()
   const vy = useRef(0)
-  const wasPushing = useRef(false)
   const food = useMemo(() => createHeldFood(), [])
 
   /** Handed to the avatar so it can pose itself. A ref: written every frame. */
@@ -223,20 +242,20 @@ export function Player({ onAvatarReady }) {
     dance: 0,
     bulk: -1,
   })
-  /** The Train Zone whose bench you're sat on, or -1, and where along it. */
+  /** The training pad whose chair you're sat on, or -1, and which chair (where, and the way it faces). */
   const seated = useRef(-1)
-  const seat = useRef({ x: 0, z: 0 })
-  /** The bench you just got up from: you don't sit back down until you've stepped off it. */
+  const seat = useRef({ x: 0, z: 0, yaw: 0 })
+  /** The pad whose chair you just got up from: you don't sit back down until you've stepped off it. */
   const leftSeat = useRef(-1)
   /** Still holding the move you walked onto the bench with: that one doesn't get you up. */
   const sitHeld = useRef(false)
-  /** The Train Zone whose pad you're on (-1 off them), and whose bench you're walking to. */
+  /** The training pad you're on (-1 off them), and whose chair you're walking to. */
   const onPad = useRef(-1)
   const toBench = useRef(-1)
   /** Still holding the move you stepped onto the pad with: that one doesn't stop the walk. */
   const padHeld = useRef(false)
 
-  // The blob shadow follows what's drawn, which is down the track while you roll.
+  // The blob shadow follows what's drawn.
   const shownAt = useMemo(() => new Vector3().copy(runtime.player.position), [])
   useEffect(() => {
     const caster = { position: shownAt, size: 1.1 }
@@ -255,7 +274,7 @@ export function Player({ onAvatarReady }) {
     const motion = motionRef.current
     const profile = getGame().profile
     motion.time += delta
-    // As fat as you are - rolling or not (a roll doesn't burn it).
+    // As fat as you are (slamming doesn't burn it).
     growBody(motion, bulkFor(profile.fat), delta)
 
     const group = groupRef.current
@@ -314,12 +333,12 @@ export function Player({ onAvatarReady }) {
     j.x += j.v * delta
     const wobble = Math.max(-1.2, Math.min(1.2, j.x)) * JIGGLE_SIZE * (0.35 + bulk)
     // And the belly breathes, in and out.
-    const breath = push.active ? 0 : Math.sin(motion.time * 1.9) * BREATH * (0.3 + bulk)
+    const breath = slam.current.phase ? 0 : Math.sin(motion.time * 1.9) * BREATH * (0.3 + bulk)
     if (visual) visual.scale.set(size * (1 + wobble + breath), size * (1 - wobble * 0.9 - breath * 0.4), size * (1 + wobble + breath))
 
-    // Dizzy stars round your head, worn out at the end of a roll.
+    // Dizzy stars round your head, after a big landing.
     const starMesh = starsRef.current
-    const dizzy = push.active && push.phase === 'blocked'
+    const dizzy = now < dizzyUntil.current
     if (starMesh) {
       starMesh.visible = dizzy
       if (dizzy) {
@@ -340,82 +359,27 @@ export function Player({ onAvatarReady }) {
     motion.happy = player.happyAt && sinceHappy < HAPPY_MS ? Math.sin((Math.PI * sinceHappy) / HAPPY_MS) : 0
     const sinceSpin = now - player.spinAt
 
-    // --- Rolling down the track ---------------------------------------------------
-    if (push.active && group && visual) {
-      pushInput.side = Math.max(-1, Math.min(1, (k.right ? 1 : 0) - (k.left ? 1 : 0) + joy.joyX))
-      push.radius = ballRadius(motion.bulk) * size
-      advancePush(delta, pushInput)
-      if (!push.active) return
-      if (!wasPushing.current) {
-        wasPushing.current = true
-        velocity.current.set(0, 0, 0)
-        vy.current = 0
-        curled.current = 0
-        shownRoll.current = 0
-        visual.quaternion.setFromAxisAngle(_up, DOWNHILL_YAW)
-      }
-      player.anim = 'push'
-      player.speed = 0
-      // Curled up while rolling; unrolling once it's over, the turn easing round to upright.
-      const rolling = push.phase === 'roll'
-      curled.current += ((rolling ? 1 : 0) - curled.current) * (1 - Math.exp(-(rolling ? 14 : 7) * delta))
-      if (rolling) shownRoll.current = push.roll
-      else {
-        const upright = Math.ceil(shownRoll.current / TWO_PI) * TWO_PI
-        shownRoll.current += (upright - shownRoll.current) * (1 - Math.exp(-9 * delta))
-      }
-      const c = curled.current
-      trackPoint(push.meter, push.x, push.radius * c, group.position)
-      if (rollRef.current) rollRef.current.rotation.x = shownRoll.current
-      if (ballRef.current) ballRef.current.position.y = -c * (BALL_MIDDLE[0] + (BALL_MIDDLE[1] - BALL_MIDDLE[0]) * motion.bulk)
-      _targetQuat.setFromAxisAngle(_up, push.phase === 'top' ? CHEER_YAW : DOWNHILL_YAW)
-      visual.quaternion.slerp(_targetQuat, 1 - Math.pow(0.001, delta))
-      shownAt.copy(push.position)
-      if (held) held.visible = false
-      motion.rolling = true
-      motion.speed = push.speed
-      motion.tired = push.phase === 'blocked' ? Math.min(1, motion.tired + delta / TIRED_IN) : 0
-      motion.cheer = push.phase === 'top' ? Math.min(1, motion.cheer + delta / CHEER_IN) : 0
-      motion.grounded = true
-      motion.training = false
-      motion.curl = 0
-      if (player.emote) stopEmote()
-      motion.emoteClip = null
-      return
-    }
-    if (wasPushing.current && group && visual) {
-      // Back in the plaza: stood up again.
-      wasPushing.current = false
-      velocity.current.set(0, 0, 0)
-      vy.current = 0
-      group.position.copy(pos)
-      if (rollRef.current) rollRef.current.rotation.x = 0
-      if (ballRef.current) ballRef.current.position.y = 0
-      visual.quaternion.setFromAxisAngle(_up, player.yaw)
-      motion.rolling = false
-      motion.tired = 0
-      motion.cheer = 0
-    }
     if (held) held.visible = true
 
-    // Walking about the plaza.
+    // Walking about the plaza, or a room of the stages.
     const at = pos
+    const level = stage.level
     const locked = player.frozen
     const moving = (k.forward || k.backward || k.left || k.right || Math.hypot(joy.joyX, joy.joyY) > 0.02) && !locked
 
     // --- On a bench: sat still, training, until you move (a fresh press) or jump -------
     if (!moving) sitHeld.current = false
     const getUp = (moving && !sitHeld.current) || k.jump || joy.jump
-    if (seated.current >= 0 && (getUp || !isZoneUnlocked(profile, seated.current))) {
+    if (seated.current >= 0 && (getUp || level >= 0 || !isZoneUnlocked(profile, seated.current))) {
       leftSeat.current = seated.current
       seated.current = -1
     }
     if (seated.current >= 0) {
-      at.set(seat.current.x, ZONE_HEIGHT, seat.current.z)
+      at.set(seat.current.x, padHeight(seated.current), seat.current.z)
       velocity.current.set(0, 0, 0)
       vy.current = 0
       player.grounded = true
-      player.yaw = seatYaw(seated.current)
+      player.yaw = seat.current.yaw
       if (visual) visual.quaternion.slerp(_targetQuat.setFromAxisAngle(_up, player.yaw), 1 - Math.pow(0.0005, delta))
       if (group) group.position.copy(at)
       shownAt.copy(at)
@@ -449,9 +413,9 @@ export function Player({ onAvatarReady }) {
     }
     const inputLength = Math.min(1, _input.length())
 
-    // Just stepped onto an unlocked Food Court's deck: off to its bench, until a fresh
-    // move or a jump takes over (or you leave the deck).
-    const pad = locked ? -1 : zoneAt(at.x, at.z)
+    // Just stepped onto an unlocked training pad's deck: off to its nearest chair, until a
+    // fresh move or a jump takes over (or you leave the deck).
+    const pad = locked || level >= 0 ? -1 : zoneAt(at.x, at.z)
     if (pad !== onPad.current) {
       onPad.current = pad
       toBench.current = pad >= 0 && isZoneUnlocked(profile, pad) ? pad : -1
@@ -462,6 +426,7 @@ export function Player({ onAvatarReady }) {
 
     if (toBench.current >= 0) {
       benchSeat(toBench.current, at.x, at.z, _seatAt)
+      // Walk to the chair, not past it: slow down as you get there.
       _move.set(_seatAt.x - at.x, 0, _seatAt.z - at.z)
       if (_move.lengthSq() > 1e-4) _move.normalize().multiplyScalar(maxSpeed * 0.75)
     } else if (inputLength > 0.02) {
@@ -477,7 +442,7 @@ export function Player({ onAvatarReady }) {
         .addScaledVector(_camForward, -_input.z)
         .addScaledVector(_camRight, _input.x)
         .normalize()
-        .multiplyScalar(maxSpeed * inputLength)
+        .multiplyScalar(maxSpeed * inputLength * (slam.current.phase ? SLAM_STEER : 1))
     } else {
       _move.set(0, 0, 0)
     }
@@ -492,33 +457,78 @@ export function Player({ onAvatarReady }) {
     at.x += velocity.current.x * delta
     at.z += velocity.current.z * delta
 
-    for (const rect of STATIC_COLLIDERS) pushOut(at, rect)
-    for (const rect of runtime.dynamicColliders) pushOut(at, rect)
-    clampToWalkable(at.x, at.z, _clamped)
+    // The lobby's walls, or a room's: you're kept inside where you are.
+    if (level < 0) {
+      for (const rect of STATIC_COLLIDERS) pushOut(at, rect)
+      for (const rect of runtime.dynamicColliders) pushOut(at, rect)
+    }
+    clampToLevel(level, at.x, at.z, _clamped)
     at.x = _clamped.x
     at.z = _clamped.z
 
-    // A ledge too tall to step onto acts as a wall.
-    let floor = groundHeightAt(at.x, at.z)
+    // A ledge too tall to step onto acts as a wall. Down in the stages, a room's floor is
+    // flat (the floor ahead is flush with it until it breaks - and then you're in the
+    // room under it, falling).
+    let floor = level < 0 ? groundHeightAt(at.x, at.z) : roomFloorY(level)
     if (floor - at.y > STEP_UP) {
       at.x = prevX
       at.z = prevZ
-      floor = groundHeightAt(at.x, at.z)
+      floor = level < 0 ? groundHeightAt(at.x, at.z) : roomFloorY(level)
     }
 
-    // --- Vertical ---------------------------------------------------------------
+    // --- Vertical: jumps, and the belly slam on the floor ahead --------------------
+    const sl = slam.current
+    const ahead = level + 1
+    const onAhead = ahead < STAGE_COUNT && !stage.broken[ahead] && onFloor(ahead, at.x, at.z)
     const wantJump = !locked && (k.jump || joy.jump)
     if (wantJump && player.grounded) {
       vy.current = JUMP_SPEED
       player.grounded = false
+      sl.phase = 0
       sfx.jump()
+    } else if (onAhead && player.grounded && !locked && sl.phase === 0 && now >= sl.restUntil) {
+      // Squat down to wind up...
+      if (profile.fat > 0) {
+        sl.phase = 3
+        sl.crouchUntil = now + SLAM_CROUCH_MS
+      } else noteHungry()
+    }
+    if (sl.phase === 3) {
+      if (!onAhead || !player.grounded || locked) sl.phase = 0
+      else if (now >= sl.crouchUntil) {
+        // ...and up you go...
+        vy.current = SLAM_JUMP
+        player.grounded = false
+        sl.phase = 1
+        sfx.slamJump()
+      }
+    }
+    // ...and over the top, curled up and down belly first.
+    if (sl.phase === 1 && vy.current < 2.5) {
+      sl.phase = 2
+      vy.current = -POUND_SPEED
     }
     vy.current -= GRAVITY * delta
     at.y += vy.current * delta
 
     if (at.y <= floor) {
-      // Coming down from a jump (not just stepping off a kerb) lands with a thump.
-      if (!player.grounded && vy.current < -5) {
+      if (sl.phase === 2) {
+        // SLAM! The floor ahead takes it (if you came down on it), and you wobble.
+        if (onAhead) slamImpact(at)
+        jiggle.current.v += 10 + 10 * Math.min(1, motion.bulk)
+        sl.phase = 0
+        sl.landAt = now
+        sl.restUntil = now + SLAM_REST_MS
+      } else if (!player.grounded && vy.current < -BIG_LANDING) {
+        // Down through a floor: a big landing, seeing stars.
+        sfx.bigLand()
+        jiggle.current.v += 16 + 10 * Math.min(1, motion.bulk)
+        dizzyUntil.current = now + DIZZY_MS
+        sl.landAt = now
+        stage.shake = Math.max(stage.shake, 0.7)
+        burst({ x: at.x, y: floor + 0.2, z: at.z, count: 24, palette: 'dust', speed: 7 })
+      } else if (!player.grounded && vy.current < -5) {
+        // Coming down from a jump (not just stepping off a kerb) lands with a thump.
         sfx.jumpLand()
         jiggle.current.v += 4 + 6 * Math.min(1, motion.bulk)
       }
@@ -526,9 +536,13 @@ export function Player({ onAvatarReady }) {
       vy.current = 0
       player.grounded = true
     } else if (at.y - floor > 0.05) {
-      // Walked off a ledge, or still rising from a jump.
+      // Walked off a ledge, still rising from a jump - or falling through a floor.
       player.grounded = false
     }
+    if (player.grounded && sl.phase === 1) sl.phase = 0
+
+    // On the WINS pad of the room you're in: it pays and sends you home.
+    if (level >= 0 && player.grounded && !locked && onPadNow(level, at.x, at.z)) claimPad(at)
 
     // --- Facing -----------------------------------------------------------------
     const speed = Math.hypot(velocity.current.x, velocity.current.z)
@@ -541,20 +555,33 @@ export function Player({ onAvatarReady }) {
         visual.quaternion.setFromAxisAngle(_up, player.yaw + (1 - (1 - t) ** 3) * SPIN_TURNS * Math.PI * 2)
       } else visual.quaternion.slerp(_targetQuat, 1 - Math.pow(0.0005, delta))
     }
+    // Curled into a ball coming down on a slam; unrolling as you land, the turn easing
+    // round to upright.
+    const pounding = sl.phase === 2
+    curled.current += ((pounding ? 1 : 0) - curled.current) * (1 - Math.exp(-(pounding ? 22 : 12) * delta))
+    const c = curled.current < 0.01 ? 0 : curled.current
+    if (pounding) shownRoll.current += delta * 16
+    else {
+      const upright = Math.ceil(shownRoll.current / TWO_PI - 0.25) * TWO_PI
+      shownRoll.current += (upright - shownRoll.current) * (1 - Math.exp(-12 * delta))
+    }
+    if (rollRef.current) rollRef.current.rotation.x = shownRoll.current
+    if (ballRef.current) ballRef.current.position.y = -c * (BALL_MIDDLE[0] + (BALL_MIDDLE[1] - BALL_MIDDLE[0]) * motion.bulk)
+    const lift = c * ballRadius(motion.bulk) * size
     if (group) {
       // Step-ups ease in over a few frames on the visual only; the logical position
       // snaps so collision and triggers stay exact.
-      const steppingUp = player.grounded && at.y > group.position.y
+      const steppingUp = player.grounded && at.y > group.position.y - lift
       const visualY = steppingUp
-        ? group.position.y + (at.y - group.position.y) * Math.min(1, delta * 18)
-        : at.y
+        ? group.position.y + (at.y + lift - group.position.y) * Math.min(1, delta * 18)
+        : at.y + lift
       group.position.set(at.x, visualY, at.z)
     }
     shownAt.copy(at)
 
-    // Walked into a bench at an unlocked Food Court: sit on it there (from next frame).
-    // Off the bench you got up from (jumping off it doesn't count), you may sit again.
-    const bench = locked ? -1 : benchAt(at.x, at.z)
+    // Walked into a chair at an unlocked training pad: sit on it (from next frame). Off
+    // the pad's chairs you got up from (jumping off doesn't count), you may sit again.
+    const bench = locked || level >= 0 ? -1 : benchAt(at.x, at.z)
     if (bench !== leftSeat.current) leftSeat.current = -1
     if (bench >= 0 && player.grounded && bench !== leftSeat.current && isZoneUnlocked(profile, bench)) {
       seated.current = bench
@@ -569,12 +596,22 @@ export function Player({ onAvatarReady }) {
 
     // --- Publish motion ---------------------------------------------------------
     player.speed = speed
-    player.anim = !player.grounded ? 'jump' : dancing ? 'dance' : speed > 0.5 ? 'walk' : 'idle'
+    player.anim = sl.phase ? 'slam' : !player.grounded ? 'jump' : dancing ? 'dance' : speed > 0.5 ? 'walk' : 'idle'
 
     motion.speed = speed
     motion.maxSpeed = maxSpeed
     motion.grounded = player.grounded
     motion.vy = vy.current
+    motion.rolling = c > 0.3
+    motion.tired = 0
+    motion.cheer = 0
+    // The slam's wind-up (and the squash of landing), its leap, and flailing down through a floor.
+    const ease = 1 - Math.exp(-24 * delta)
+    const squatting = sl.phase === 3 || (player.grounded && now - sl.landAt < SLAM_SQUASH_MS)
+    motion.crouch = (motion.crouch ?? 0) + ((squatting ? 1 : 0) - (motion.crouch ?? 0)) * ease
+    motion.rising = (motion.rising ?? 0) + ((sl.phase === 1 ? 1 : 0) - (motion.rising ?? 0)) * ease
+    const flail = !player.grounded && sl.phase === 0 && vy.current < -FLAIL_SPEED
+    motion.falling = (motion.falling ?? 0) + ((flail ? 1 : 0) - (motion.falling ?? 0)) * (1 - Math.exp(-10 * delta))
     motion.training = false
     motion.dance = dancing ? 1 : 0
     motion.curl = biteT >= 0 && biteT < 1 ? Math.max(1e-4, biteT) : 0

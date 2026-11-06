@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 
 import { BOXITY_BOARDS } from '../../shared/balance.js'
-import { createProfile, TRACKS } from '../../shared/logic.js'
+import { createProfile, STAGE_SETS } from '../../shared/logic.js'
 import { PlayerSession } from '../../shared/session.js'
-import { PUSH_ZONE } from '../../shared/world.js'
+import { floorRect, padRect, roomFloorY } from '../../shared/world.js'
 import { isGuestId, legionId, noteScores } from '../src/boxity.js'
 import { adoptGuestProgress, closeStorage, loadProfile, openStorage, saveProfile } from '../src/db.js'
 
@@ -54,15 +54,18 @@ test('a guest who signs in brings their progress to a new account - once', async
   assert.equal((await loadProfile('account-1', 'Player', 'pod:b')).coins, 500)
 })
 
-test('Coins earned running are counted for the Most Coins board', () => {
+test('Wins from the pads are counted for the Most Wins board', () => {
   const p = createProfile('a', 'A')
-  p.fat = 30
-  const at = { x: 0, y: 0, z: (PUSH_ZONE.minZ + PUSH_ZONE.maxZ) / 2 }
+  p.fat = 100
+  const floor = floorRect(0)
+  const at = { x: 0, y: 0, z: (floor.minZ + floor.maxZ) / 2 }
   const s = new PlayerSession(p, { now: 0, emit: () => {}, getPosition: () => at })
-  const track = TRACKS[0]
-  s.handle('startPush', {}, 0)
-  s.handle('pushAt', { meter: track.stageTop(0), x: 0 }, 4000)
-  const tape = track.tapes[0]
-  assert.equal(p.coins, tape.coins)
-  assert.equal(s.coinsEarned, tape.coins)
+  s.handle('slam', at, 1000)
+  assert.equal(s.level, 0, 'through floor 0')
+  const pad = padRect(0)
+  Object.assign(at, { x: (pad.minX + pad.maxX) / 2, y: roomFloorY(0), z: (pad.minZ + pad.maxZ) / 2 })
+  s.handle('claimWins', at, 4000)
+  const wins = STAGE_SETS[0].stages[0].wins
+  assert.equal(p.coins, wins)
+  assert.equal(s.coinsEarned, wins)
 })

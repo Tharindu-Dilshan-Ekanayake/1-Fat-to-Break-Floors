@@ -21,12 +21,12 @@ export const actions = {
   eat: () => send('eat'),
   enterZone: (zone) => send('enterZone', { zone }),
   leaveZone: () => send('leaveZone'),
-  /** Starts a roll down the track; only counts standing on the ROLL ZONE (walking onto it sends it). */
-  startPush: () => send('startPush'),
-  /** Where you've got to down the track (a few times a second while rolling). */
-  pushAt: (meter, x) => send('pushAt', { meter, x }),
-  /** The roll is over: 'blocked' (thrown back by a tape too strong), 'top' (the end of the track) or 'left'. */
-  endPush: (reason) => send('endPush', { reason }),
+  /** A belly slam landed on the floor ahead, at (x, z). */
+  slam: (x, z) => send('slam', { x, z }),
+  /** Standing on the WINS pad of the room you're in, at (x, z): pay up and send me home. */
+  claimWins: (x, z) => send('claimWins', { x, z }),
+  /** Back to the lobby from the stages, with nothing. */
+  leaveStage: () => send('leaveStage'),
   /** A Boxity emote started ('' when it stops), so the room sees it. */
   emote: (id) => send('emote', { id }),
   /** Back to the spawn point (Boxity's "Reset Character"). */
@@ -50,6 +50,6 @@ export const actions = {
   claimFreeReward: () => send('claimFreeReward'),
   setSetting: (key, value) => send('setting', { key, value }),
   portal: () => send('portal'),
-  /** Buys a shop item with Coins; see shop.js. */
+  /** Buys a shop item with Wins; see shop.js. */
   purchase: (productId) => send('purchase', { productId }),
 }

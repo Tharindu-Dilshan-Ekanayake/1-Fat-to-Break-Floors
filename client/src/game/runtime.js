@@ -28,7 +28,7 @@ export const runtime = {
     frozen: false,
     /** performance.now() of the last bite (a click), for the hand to the mouth. */
     ateAt: 0,
-    /** performance.now() of the last bite taken at a Food Court table: the belly wobbles. */
+    /** performance.now() of the last bite taken at a Training Pad table: the belly wobbles. */
     jiggleAt: 0,
     /** How big your character is drawn (fatter is bigger): 1 skinny. */
     drawnSize: 1,

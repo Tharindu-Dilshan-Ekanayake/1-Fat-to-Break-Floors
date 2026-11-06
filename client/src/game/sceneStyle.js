@@ -1,7 +1,8 @@
 /**
- * The scene's whole look in one place: a bright toy-brick world with a saturated blue
- * sky, a light-blue studded baseplate with lime lawns and orange dirt patches, grey
- * voxel mountains all round and terracotta cliffs either side of the boulder track.
+ * The scene's whole look in one place - CANDY KINGDOM: a toy-brick sweet shop of a world
+ * under a pink-and-lavender sky with cotton-candy clouds; a pastel pink studded baseplate
+ * with cream icing paths and mint lawns; chocolate mountains capped with icing all round,
+ * and caramel wafer cliffs either side of the STAGE gate.
  *
  * Colours are sRGB hex, exactly as you would pick them in an image editor.
  *
@@ -12,12 +13,12 @@
  */
 
 export const SKY = {
-  /** Straight up. */
-  top: '#2f8ff2',
-  /** At eye level. Fog uses the same colour so distant ground melts into the sky. */
-  horizon: '#a6d6fb',
-  /** Lower = the deep blue reaches further down towards the horizon. */
-  exponent: 0.35,
+  /** Straight up: soft lavender. */
+  top: '#9d8cff',
+  /** At eye level: candy-floss pink. Fog uses the same colour so distant ground melts into the sky. */
+  horizon: '#ffd3ec',
+  /** Lower = the lavender reaches further down towards the horizon. */
+  exponent: 0.5,
 }
 
 export const FOG = {
@@ -27,38 +28,43 @@ export const FOG = {
 export const CLOUDS = {
   /** Sunlit tops. */
   top: '#ffffff',
-  /** Undersides, a cool blue-grey. */
-  bottom: '#d6e5f5',
+  /** Undersides: cotton-candy pink. */
+  bottom: '#ffb8de',
 }
 
 /** Every surface colour in the lobby. */
 export const PALETTE = {
-  /** The baseplate: light blue studs, as in the reference. */
-  plaza: '#a4cdee',
-  /** Raised kerbs round the lawns, and the darker edge painted along them. */
-  curb: '#c3d8ec',
-  curbEdge: '#8fb4d8',
-  lawn: '#62e23d',
-  dirt: '#f59a4f',
-  apron: '#d7e4f0',
-  apronEdge: '#eef5fb',
-  shopFloor: '#aab4bf',
-  /** Grey voxel mountains, and the terracotta cliffs either side of the track. */
-  rock: ['#9a9fa6', '#8a8f96', '#a9adb2'],
-  cliff: '#c4774a',
-  trunk: '#7c4d29',
-  leaves: ['#2fc53a', '#3ad646', '#27b134'],
-  white: '#f4f7fb',
-  water: '#4cc3ff',
+  /** The baseplate: pastel pink studs. */
+  plaza: '#ffd9ea',
+  /** Raised kerbs round the lawns - white icing - and the pink edge painted along them. */
+  curb: '#ffffff',
+  curbEdge: '#ff9ccb',
+  /** Mint lawns, with patches of strawberry floss. */
+  lawn: '#86ebc8',
+  dirt: '#ffb3d6',
+  /** Cream icing paths and their bright edge. */
+  apron: '#fff1dc',
+  apronEdge: '#ffffff',
+  shopFloor: '#f3c9a3',
+  /** Chocolate mountains (three bars' worth of shades), and the caramel wafer cliffs either side of the gate. */
+  rock: ['#7b4a2d', '#6a3d24', '#8c5836'],
+  cliff: '#f0a85e',
+  /** Lollipop sticks and the lollipops and floss on them. */
+  trunk: '#fff8f0',
+  leaves: ['#ff5fa8', '#ffd23f', '#7fe6c4', '#a98bff', '#ff8a5c'],
+  white: '#fff8f0',
+  /** The chocolate pool at the foot of the chocolate waterfall. */
+  water: '#7a4426',
 }
 
 export const LIGHTS = {
   /** Fill from above (sky) and below (bounce off the grass). */
-  hemiSky: '#ffffff',
-  hemiGround: '#b9cba6',
+  hemiSky: '#fff6fc',
+  /** Pink light bouncing up off the baseplate. */
+  hemiGround: '#f3c3dc',
   hemiIntensity: 2.1,
 
-  sunColor: '#fff6e8',
+  sunColor: '#fff2e4',
   sunIntensity: 1.65,
   /**
    * Direction *towards* the sun: high and a little to the left, behind the default

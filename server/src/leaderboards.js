@@ -4,7 +4,7 @@ import { activePlayers, broadcastAll } from './registry.js'
 const REFRESH_MS = 60_000
 let cached = { rebirths: [], fat: [], height: [], updatedAt: 0 }
 
-/** Latest top-10 boards (Most Rebirths, Fattest, Furthest Run). */
+/** Latest top-10 boards (Most Rebirths, Fattest, Deepest Floor). */
 export function getLeaderboards() {
   return cached
 }

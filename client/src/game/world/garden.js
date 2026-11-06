@@ -3,13 +3,14 @@ import { CylinderGeometry } from 'three'
 import { EGG_STANDS } from '@shared/world'
 
 import { STYLE } from '../materials'
-import { LAWNS } from './lawns'
+import { LAWN } from './lawns'
 import { flowerBed } from './structures'
+import { addCandyTree } from './terrain'
 
 /**
  * The plaza's greenery, set out in rows on the kerbed lawns (lawns.js) rather than
- * scattered: low flower clumps on the lawns beside the walkway near spawn and between it
- * and the food shop (nothing tall there: they'd hide the Food Courts and the shop from
+ * scattered: low flower clumps on the lawns beside the runway near spawn and between it
+ * and the food shop (nothing tall there: they'd hide the training hall and the shop from
  * spawn), in a row along the strips either side of the walk down to the egg plaza and
  * along the lawn in front of the leaderboards, a flower bed between each pair of egg
  * stands, a tree on each lawn further up the walkway, and trees on the lawns in the far
@@ -17,8 +18,12 @@ import { flowerBed } from './structures'
  * `palette`'s colours (palette.js).
  */
 
-/** A round, bushy tree: a trunk and tiers of leaves turned an eighth apart. */
+/** A round, bushy tree: a trunk and tiers of leaves turned an eighth apart (in Candy Kingdom, a lollipop or a cotton-candy tree). */
 export function roundTree(blocks, x, z, s, k, palette) {
+  if (palette.candy) {
+    addCandyTree(blocks, x, 0, z, s * 0.85, k, k % 2, k * 0.9, palette)
+    return
+  }
   const green = palette.leaves[k % palette.leaves.length]
   blocks.addOn(x, 0, z, 0.55 * s, 2.0 * s, 0.55 * s, palette.trunk, STYLE.STUDS)
   blocks.addOn(x, 1.7 * s, z, 2.8 * s, 1.9 * s, 2.8 * s, green, STYLE.STUDS, 0.785 * (k % 2))
@@ -26,8 +31,20 @@ export function roundTree(blocks, x, z, s, k, palette) {
   blocks.addOn(x, 4.5 * s, z, 1.0 * s, 0.7 * s, 1.0 * s, green, STYLE.STUDS, 0.785 * (k % 2))
 }
 
-/** A leafy tuft with a few flowers round it. */
+/** A leafy tuft with a few flowers round it (in Candy Kingdom, a cluster of gumdrops). */
 function flowerClump(blocks, x, z, k, palette, detail) {
+  if (palette.candy) {
+    const count = detail ? 3 : 2
+    for (let i = 0; i < count; i += 1) {
+      const a = k * 1.7 + (i * Math.PI * 2) / count
+      const gx = x + Math.cos(a) * 0.45
+      const gz = z + Math.sin(a) * 0.45
+      const color = palette.flowers[(i + k) % palette.flowers.length]
+      blocks.addOn(gx, 0, gz, 0.62, 0.42, 0.62, color, STYLE.SMOOTH, a)
+      blocks.addOn(gx, 0.42, gz, 0.4, 0.22, 0.4, color, STYLE.SMOOTH, a + 0.785)
+    }
+    return
+  }
   blocks.addOn(x, 0, z, 0.9, 0.35, 0.9, palette.leaves[k % palette.leaves.length], STYLE.STUDS, 0.785 * (k % 2))
   const count = detail ? 4 : 2
   for (let i = 0; i < count; i += 1) {
@@ -46,12 +63,12 @@ function along(lawn, count, margin = 1.5) {
 
 export function buildGarden(blocks, props, { detail = true, palette } = {}) {
   const round = { small: new CylinderGeometry(1, 1, 1, 16) }
-  const [avenueW, avenueE, stripW, stripE, boards, corner, falls, upW, upE, shop, behindHut, behindStatue] = LAWNS
+  const { avenue, stripW, stripE, boards, corner, falls, upW, upE, shop, behindHut, behindStatue } = LAWN
 
-  // Flower clumps down the lawns either side of the avenue, framing the way up to the square.
-  for (const [k, lawn] of [avenueW, avenueE].entries()) {
-    const x = (lawn.minX + lawn.maxX) / 2
-    for (const z of [lawn.minZ + 1.5, lawn.maxZ - 1.5]) flowerClump(blocks, x, z, k + (z > lawn.minZ + 2 ? 2 : 0), palette, detail)
+  // Flower clumps down the lawn beside the runway, framing the way up to the gate.
+  {
+    const x = (avenue.minX + avenue.maxX) / 2
+    for (const [k, z] of [avenue.minZ + 1.5, (avenue.minZ + avenue.maxZ) / 2, avenue.maxZ - 1.5].entries()) flowerClump(blocks, x, z, k, palette, detail)
   }
 
   // Flower clumps in rows along the strips beside the walk down to the egg plaza, and

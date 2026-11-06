@@ -24,20 +24,15 @@ const roundButton = (size, background) => ({
 
 /**
  * On-screen controls for touch devices: a floating joystick that appears wherever the
- * left side of the screen is touched (rolling down the track, it steers), a big EAT
- * button - every tap a bite - and a jump button (on the ROLL ZONE, EAT gives way to the
- * prompt's ROLL! button, held to start rolling). Everything else is walking up to
- * things - a Food Court table, a food pad - or tapping their prompt.
+ * left side of the screen is touched, a big EAT button - every tap a bite - and a jump
+ * button. Everything else is walking up to things - a training pad's chair, the Food
+ * Shop's counter, a floor to slam, a WINS pad - or tapping their prompt.
  *
  * Writes straight into `runtime.input` and moves the knob through refs, so dragging
  * never re-renders React.
  */
 export function TouchControls() {
   const [isTouch, setIsTouch] = useState(detectTouch)
-  const rolling = useGame((s) => s.pushing)
-  // On the ROLL ZONE (with Fat to roll on) EAT makes way for the prompt's ROLL! button,
-  // in the same spot.
-  const atRollZone = useGame((s) => s.zone.pushZone && s.profile.fat > 0)
   const ready = useGame((s) => s.playable)
   const baseRef = useRef(null)
   const knobRef = useRef(null)
@@ -125,7 +120,7 @@ export function TouchControls() {
             height: RADIUS * 2,
             opacity: 0.35,
             left: RADIUS * 2.6,
-            // Resting low down, clear of the menu tiles above and the Coins and Fat
+            // Resting low down, clear of the menu tiles above and the Wins and Fat
             // in the corner.
             top: `calc(100% - ${RADIUS * 2.3}px)`,
           }}
@@ -138,7 +133,7 @@ export function TouchControls() {
         </div>
       </div>
 
-      {ready && !rolling && !atRollZone && (
+      {ready && (
         <button
           type="button"
           aria-label="Eat"

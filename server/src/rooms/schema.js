@@ -1,8 +1,5 @@
 import { schema, t } from '@colyseus/schema'
 
-/** `pushMeter` while not pushing. */
-export const NOT_PUSHING = -1000
-
 /**
  * Synced state, kept deliberately small: only what other players need to draw you.
  * Everything private (inventory, items, boosts...) goes to its owner alone as
@@ -17,7 +14,7 @@ export const PlayerState = schema(
     y: t.float32(),
     z: t.float32(),
     rotY: t.float32(),
-    /** 'idle' | 'walk' | 'train' (eating at a Food Court) | 'jump' | 'push' (running the track) | 'dance' */
+    /** 'idle' | 'walk' | 'train' (eating at a training pad) | 'jump' | 'slam' (slamming a floor) | 'dance' */
     anim: t.string(),
     /** The Boxity emote they're playing ('' = none), and when it started (ms since its own epoch, for its phase). */
     emote: t.string(),
@@ -29,15 +26,10 @@ export const PlayerState = schema(
     aura: t.string(),
     /** Equipped pet species, at most 3. */
     petIds: t.array('string'),
-    /**
-     * On the tape track: where along it they are (NOT_PUSHING in the plaza), how far
-     * across, and their run's phase ('run').
-     */
-    pushMeter: t.float32(),
-    pushX: t.float32(),
-    pushPhase: t.string(),
+    /** Where in the stages they are: -1 in the lobby, i in room i (of their world's stages). */
+    stage: t.int8(),
     fat: t.float64(),
-    /** The world they're in (WORLDS index): others only see their run in the same one. */
+    /** The world they're in (WORLDS index): others only see them in the stages of the same one. */
     world: t.uint8(),
     coins: t.float64(),
     rebirths: t.uint16(),

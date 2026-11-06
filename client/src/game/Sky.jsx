@@ -3,11 +3,14 @@ import { useEffect, useMemo, useRef } from 'react'
 import {
   BackSide,
   BufferAttribute,
+  BufferGeometry,
   Color,
   IcosahedronGeometry,
   InstancedMesh,
   Matrix4,
   MeshBasicMaterial,
+  Points,
+  PointsMaterial,
   Quaternion,
   Triangle,
   Vector3,
@@ -17,8 +20,9 @@ import { mulberry32 } from '@shared/rng'
 
 import { useGame } from '../store/game'
 import { useQuality } from '../store/quality'
-import { CLOUDS, LIGHTS } from './sceneStyle'
+import { CLOUDS, FOG, LIGHTS, SKY } from './sceneStyle'
 import { skyUniforms } from './skyState'
+import { WORLD_SKIES } from './stage/themes'
 import { useAfterPlayable } from './useAfterPlayable'
 
 /** Unit dome, scaled to just inside the camera's far plane for the current preset. */
@@ -28,8 +32,11 @@ const SKY_RADIUS = 1
 const CLOUD_CENTER = [0, 0, -80]
 /** Radians per second the whole cloud field turns about its centre. */
 const CLOUD_DRIFT = 0.004
-/** The clouds' tint by world: white by day; dusky violet in World 2's night sky. */
+/** The clouds' tint by world: cotton candy in Candy Kingdom; dusky violet in World 2's night sky. */
 const CLOUD_TINTS = ['#ffffff', '#5b4c9c']
+/** How many stars World 2's night sky has, and how far out they sit. */
+const STAR_COUNT = 500
+const STAR_RADIUS = 140
 
 const skyVertexShader = /* glsl */ `
   varying vec3 vDirection;
@@ -234,11 +241,67 @@ function Clouds() {
   return <primitive ref={ref} object={mesh} />
 }
 
-/** Gradient sky plus drifting low-poly clouds. */
+/**
+ * Each world's sky: Candy Kingdom's lavender fading to pink (sceneStyle's SKY), or World
+ * 2's night (WORLD_SKIES) - the dome's colours, the fog's and the clear colour, set when
+ * the world changes - and, in a sky with stars, a field of them round the camera (presets
+ * with particles only).
+ */
+function WorldSky() {
+  const world = useGame((s) => s.profile.world)
+  const particles = useQuality((s) => s.settings.particles)
+  const scene = useThree((s) => s.scene)
+  const gl = useThree((s) => s.gl)
+  const camera = useThree((s) => s.camera)
+  const ref = useRef(null)
+  const look = WORLD_SKIES[world]
+
+  const stars = useMemo(() => {
+    const rand = mulberry32(99)
+    const positions = new Float32Array(STAR_COUNT * 3)
+    const p = new Vector3()
+    for (let i = 0; i < STAR_COUNT; i += 1) {
+      p.set(rand() * 2 - 1, rand() * 1.2 - 0.1, rand() * 2 - 1).normalize().multiplyScalar(STAR_RADIUS)
+      positions.set([p.x, p.y, p.z], i * 3)
+    }
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(positions, 3))
+    const points = new Points(geometry, new PointsMaterial({ color: '#ffffff', size: 2, sizeAttenuation: false, fog: false, depthWrite: false }))
+    points.frustumCulled = false
+    return points
+  }, [])
+
+  useEffect(
+    () => () => {
+      stars.geometry.dispose()
+      stars.material.dispose()
+    },
+    [stars],
+  )
+
+  useEffect(() => {
+    const top = look ? look.sky[0] : SKY.top
+    const horizon = look ? look.sky[1] : SKY.horizon
+    skyUniforms.topColor.value.set(top)
+    skyUniforms.horizonColor.value.set(horizon)
+    if (scene.fog) scene.fog.color.set(look ? horizon : FOG.color)
+    gl.setClearColor(horizon)
+  }, [look, scene, gl])
+
+  const showStars = Boolean(look?.stars) && particles
+  useFrame(() => {
+    if (showStars && ref.current) ref.current.position.copy(camera.position)
+  })
+
+  return <primitive ref={ref} object={stars} visible={showStars} />
+}
+
+/** Gradient sky plus drifting low-poly clouds (and stars, at night). */
 export function Sky() {
   return (
     <>
       <SkyDome />
+      <WorldSky />
       <Clouds />
     </>
   )

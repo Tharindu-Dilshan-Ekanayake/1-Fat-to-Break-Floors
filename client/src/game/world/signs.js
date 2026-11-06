@@ -1,45 +1,11 @@
 import { CanvasTexture, LinearMipmapLinearFilter, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
-import { PUSH_ZONE } from '@shared/world'
-
-import { onPushSign, PUSH_SIGN } from './pushZone'
+import { GATE_SIGN } from './stageGate'
 import { SHOP_SIGN, STATUE_PLATE } from './structures'
+import { TRAIN_SIGN } from './trainingPads'
 
 const FONT = '"Fredoka One", "Arial Rounded MT Bold", sans-serif'
-
-/**
- * Big chunky lettering painted on a textured quad, slanted by shear (the font has no
- * italic face): a solid extruded edge in `edge` under a thick dark outline, the face
- * filled with a top-to-bottom gradient of `fill` stops, and a glossy band across the
- * top of each letter. `text` is one line, or several as [{ text, fill, edge }] - each in
- * its own band, as big as fits. Every painted sign shares one material setup, so one
- * shader program.
- */
-function paintText(text, maxTexture, { aspect, fill, edge, slant = 0.22, worldWidth }) {
-  const width = Math.min(1024, maxTexture)
-  const height = Math.round(width * aspect)
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  const lines = Array.isArray(text) ? text : [{ text, fill, edge }]
-  const band = height / lines.length
-  lines.forEach((line, i) => paintLine(ctx, line, width, band, band * i, slant))
-
-  const texture = new CanvasTexture(canvas)
-  texture.colorSpace = SRGBColorSpace
-  texture.minFilter = LinearMipmapLinearFilter
-  const material = new MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-  })
-  const geometry = new PlaneGeometry(worldWidth, worldWidth * aspect)
-  return { geometry, material, texture }
-}
 
 /**
  * Several boards' lettering painted into ONE canvas, a band each, and shown as ONE mesh:
@@ -119,10 +85,10 @@ function paintLine(ctx, { text, fill, edge }, width, height, top, slant) {
 }
 
 /**
- * The painted signs, drawn once the font has loaded: "ROLL!" across the ROLL ZONE at the
- * start of the track, "Step In to ROLL!" on the wooden sign beside it, and - together,
- * in one texture and one mesh - "FOOD SHOP" on the board on the food hut's roof and
- * "CHAMPION EATER" on the plaque on the statue's plinth. Each sits a couple of
+ * The painted signs, drawn once the font has loaded - together, in one texture and one
+ * mesh: "STAGES" on the gate's arch, "TRAIN" on the training hall's back wall, "FOOD
+ * SHOP" on the board on the food hut's roof and "CHAMPION EATER" on the plaque on the
+ * statue's plinth. Each sits a couple of
  * centimetres proud of what it's painted on, so it can't sink into it.
  *
  * @param {number} maxTexture texture size cap for the preset
@@ -131,19 +97,25 @@ function paintLine(ctx, { text, fill, edge }, width, height, top, slant) {
 export async function createPaintedSigns(maxTexture) {
   await document.fonts?.load(`64px ${FONT}`).catch(() => null)
 
-  const zoneWidth = PUSH_ZONE.maxX - PUSH_ZONE.minX - 4.2
-  const zone = paintText('ROLL!', maxTexture, {
-    aspect: 0.32,
-    fill: ['#ffffff', '#ffffff', '#e6ecf5'],
-    edge: '#9aa6b8',
-    worldWidth: zoneWidth,
-  })
-  // Just above the strip's raised green fill (its top is 0.1 up), read from the plaza.
-  zone.position = [0, 0.13, (PUSH_ZONE.minZ + PUSH_ZONE.maxZ) / 2]
-  zone.rotation = [-Math.PI / 2, 0, 0]
-
   const boards = paintBoards(
     [
+      {
+        text: 'STAGES',
+        fill: ['#ffffff', '#ffffff', '#ffe6c4'],
+        edge: '#7a1d14',
+        slant: 0.12,
+        width: GATE_SIGN.width,
+        height: GATE_SIGN.height,
+        at: GATE_SIGN,
+      },
+      {
+        text: 'TRAIN',
+        fill: ['#fff7a8', '#ffd21f', '#ff9c00'],
+        edge: '#7a1d14',
+        width: TRAIN_SIGN.width - 0.6,
+        height: TRAIN_SIGN.height - 0.4,
+        at: TRAIN_SIGN,
+      },
       {
         text: 'FOOD SHOP',
         fill: ['#fff7a8', '#ffd21f', '#ff9c00'],
@@ -165,18 +137,5 @@ export async function createPaintedSigns(maxTexture) {
     maxTexture,
   )
 
-  // The start sign's words, on its board's planks, turned with it.
-  const { y, width, height, yaw } = PUSH_SIGN
-  const start = paintText(
-    [
-      { text: 'Step In', fill: ['#ffffff', '#ffffff', '#ffe6c4'], edge: '#7a3f12' },
-      { text: 'to ROLL!', fill: ['#fff7a8', '#ffd21f', '#ff9c00'], edge: '#7a3f12' },
-    ],
-    maxTexture,
-    { aspect: (height - 0.5) / (width - 0.5), slant: 0.1, worldWidth: width - 0.5 },
-  )
-  start.position = onPushSign(0, y, 0.17)
-  start.rotation = [0, yaw, 0]
-
-  return [zone, start, boards]
+  return [boards]
 }

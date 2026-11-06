@@ -3,17 +3,17 @@ import { WORLDS } from '@shared/balance'
 import { sfx } from '../audio/sfx'
 import { burst, queueTrainFx } from '../game/fx/fxQueue'
 import { spawnPopup } from '../game/fx/popups'
-import { beginPush, push, pushEndedByServer } from '../game/push/pushControl'
 import { runtime } from '../game/runtime'
+import { leaveStagesQuietly, onFloorBreak, onSlam, onTeleport, onWins } from '../game/stage/stageControl'
 import { getGame } from '../store/game'
 import { fadeThrough } from '../ui/fade'
 
 /** A new world's name, big in the middle of the screen. */
 const WORLD_POPUP = { screen: true, u: 0, v: 0.25, scale: 3, gradient: 'linear-gradient(180deg, #e0faff 0%, #7fe2ff 45%, #2fa8ff 100%)', life: 2600 }
 
-/** A point above wherever you're drawn: the plaza, or down the track mid-roll. */
+/** A point above where you are. */
 const atPlayer = (dy = 1.2) => {
-  const p = push.active ? push.position : runtime.player.position
+  const p = runtime.player.position
   return { x: p.x, y: p.y + dy, z: p.z }
 }
 
@@ -63,17 +63,21 @@ export function handleServerEvent(type, payload) {
       }
       break
 
-    case 'push':
-      beginPush(payload)
+    // Down in the stages (see stageControl): a floor's HP, a floor broken, a pad paid, home.
+    case 'slam':
+      onSlam(payload)
       break
 
-    case 'tape':
-      // We smash tapes the moment our own ball reaches them (pushControl), before the
-      // authority hears; this is it paying for one - nothing more to show.
+    case 'floorBreak':
+      onFloorBreak(payload)
       break
 
-    case 'pushEnd':
-      pushEndedByServer(payload)
+    case 'wins':
+      onWins(payload)
+      break
+
+    case 'teleport':
+      onTeleport(payload)
       break
 
     case 'pack':
@@ -106,6 +110,7 @@ export function handleServerEvent(type, payload) {
     // Through a world portal: a flash to black and the new world's name.
     case 'world': {
       const name = WORLDS[payload.world]?.name ?? 'World 1'
+      leaveStagesQuietly()
       fadeThrough(() => null)
       sfx.portal()
       setTimeout(() => spawnPopup(`${name.toUpperCase()}!`, runtime.player.position, WORLD_POPUP), 300)

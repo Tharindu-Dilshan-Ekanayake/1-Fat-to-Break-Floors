@@ -14,17 +14,16 @@ import {
   FOOD_COUNTER,
   FOOD_HUT,
   FREE_REWARD,
+  GATE_Z,
+  HALL_TIERS,
   PLAZA,
   PORTALS,
   POTION_STAND,
-  PUSH_ZONE,
   SPAWN,
   SPHINX_STAND,
   STATUE,
-  TRACK_START_Z,
   WALKWAY,
   WATERFALL,
-  zoneDeckRect,
 } from '@shared/world'
 
 import { STYLE } from '../materials'
@@ -37,13 +36,13 @@ import { SQUARE_RADIUS } from './structures'
  * rects and discs on the texel grid, so their edges always fall on the stud-tile seams -
  * and the whole floor is a single draw call regardless of how many painted regions it has.
  *
- * The layout, as you see it from spawn (facing north): straight ahead the walkway, a
- * wide red-carpet runway with nothing on it, all the way to the ROLL ZONE; a cross street
- * through spawn, west to the Food Courts' street and east to the champion's square; and
- * behind you a walk down to the egg plaza - a promenade along the front of the egg
- * stands, the leaderboards behind them. Further up the walkway two more streets cross
- * it: one west to the Food Courts and east to the food shop's counter, and one near the
- * top from the aura stand across to the portal. A short walk leads up to the potion
+ * The layout, as you see it from spawn (facing north): straight ahead the runway, a wide
+ * red carpet with nothing on it, all the way to the STAGE gate; a cross street through
+ * spawn, west to the champion's square and east to the training hall's street, which runs
+ * north along the front of the hall; behind you a walk down to the egg plaza - a
+ * promenade along the front of the egg stands, the leaderboards behind them. Further up
+ * the runway two more streets cross it to the west: one to the food shop's counter, and
+ * one near the top to the aura stand and the portal. A short walk leads up to the potion
  * stand.
  */
 
@@ -51,24 +50,27 @@ const MAP = { minX: PLAZA.minX - 10, maxX: PLAZA.maxX + 10, minZ: PLAZA.minZ, ma
 const MAP_W = MAP.maxX - MAP.minX
 const MAP_H = MAP.maxZ - MAP.minZ
 
-/** Where the ground plane ends to the north: the track's own floor takes over there. */
-export const GROUND_NORTH_EDGE = TRACK_START_Z
+/** Where the ground plane ends to the north: the gate (the yard behind it has a floor of its own). */
+export const GROUND_NORTH_EDGE = GATE_Z
 
-/** The walkway's runway: WALKWAY, out to whole units, from spawn right up to the track. */
+/** The runway: WALKWAY, out to whole units, from spawn right up to the gate. */
 const RUNWAY = { minX: Math.floor(WALKWAY.minX), maxX: Math.ceil(WALKWAY.maxX), minZ: PLAZA.minZ, maxZ: SPAWN.z }
-/** The Food Courts' street: along their fronts (and under them), its east edge on whole units. */
-const COURT_STREET = { minX: PLAZA.minX - 2, maxX: Math.round(zoneDeckRect(0).maxX) + 7, minZ: PLAZA.minZ - 2, maxZ: PLAZA.maxZ + 2 }
-const WEST = COURT_STREET.maxX - 1
+/** The street through spawn: west to the champion's square, east to the training hall's street. */
+const CROSS = { minX: Math.round(STATUE.x + SQUARE_RADIUS) - 1, maxX: 12, minZ: SPAWN.z - 4, maxZ: SPAWN.z + 4 }
+/** Up the front of the training hall, from the cross street to the corner by the gate. */
+const HALL_STREET = { minX: 8, maxX: 12, minZ: -38, maxZ: CROSS.minZ }
+/** From the runway's top over to the hall street. */
+const HALL_LINK = { minX: RUNWAY.maxX, maxX: HALL_STREET.minX, minZ: -38, maxZ: -34 }
+/** The floor of the hall's front column, under the pads on the ground. */
+const HALL_FLOOR = { minX: HALL_STREET.maxX - 1, maxX: Math.ceil(HALL_TIERS[0].minX) + 1, minZ: Math.floor(HALL_TIERS[0].minZ) - 1, maxZ: Math.ceil(HALL_TIERS[0].maxZ) + 1 }
+/** Across the runway on the line of the food shop's counter: west to the counter. */
+const MIDWAY = { minX: Math.round(FOOD_COUNTER.x), maxX: RUNWAY.minX, minZ: Math.round(FOOD_COUNTER.z) - 2, maxZ: Math.round(FOOD_COUNTER.z) + 2 }
+/** Across the runway near the top: west past the aura stand's front to the portal. */
+const NORTH = { minX: Math.round(PORTALS[0].x) + 4, maxX: RUNWAY.minX, minZ: Math.round(AURA_STAND.z) + 4, maxZ: Math.round(AURA_STAND.z) + 8 }
 /** The egg plaza's promenade, along the front of the egg stands. */
-const PROMENADE = { minX: WEST, maxX: PLAZA.maxX - 3, minZ: 14, maxZ: 18 }
+const PROMENADE = { minX: -24, maxX: 36, minZ: 24, maxZ: 28 }
 /** The band the egg stands stand on. */
-const EGG_BAND = { minX: -19, maxX: 28, minZ: PROMENADE.maxZ, maxZ: 24 }
-/** The street through spawn: west to the Food Courts, east to the champion's square. */
-const CROSS = { minX: WEST, maxX: Math.round(STATUE.x - SQUARE_RADIUS) + 1, minZ: SPAWN.z - 4, maxZ: SPAWN.z + 4 }
-/** The street across the walkway on the line of the food shop's counter: west to the Food Courts, east to the counter. */
-const MIDWAY = { minX: WEST, maxX: Math.round(FOOD_COUNTER.x), minZ: Math.round(FOOD_COUNTER.z) - 2, maxZ: Math.round(FOOD_COUNTER.z) + 2 }
-/** The street across the walkway near the top: from the aura stand's front across to the portal. */
-const NORTH = { minX: Math.round(AURA_STAND.x) + 5, maxX: Math.round(PORTALS[0].x) - 5, minZ: Math.round(AURA_STAND.z) + 1, maxZ: Math.round(AURA_STAND.z) + 5 }
+const EGG_BAND = { minX: -20, maxX: 31, minZ: PROMENADE.maxZ, maxZ: 34 }
 /** The paving round the food shop's hut, and the round welcome patch in front of its counter. */
 const HUT_APRON = {
   minX: Math.round(FOOD_HUT.x - FOOD_HUT.half) - 1,
@@ -78,12 +80,14 @@ const HUT_APRON = {
 }
 const WELCOME = FOOD_COUNTER.radius + 0.8
 /** From the cross street up to the front of the potion stand (its counter faces east). */
-const POTION_WALK = { minX: POTION_STAND.x + 1, maxX: POTION_STAND.x + 5, minZ: POTION_STAND.z, maxZ: CROSS.minZ + 1 }
+const POTION_WALK = { minX: Math.round(POTION_STAND.x) + 3, maxX: Math.round(POTION_STAND.x) + 7, minZ: Math.round(POTION_STAND.z), maxZ: CROSS.minZ + 1 }
 /** The spawn disc's radius. */
 const SPAWN_RADIUS = 5.5
-/** Every path but the runway, all on whole units (8 wide for the main streets, 4 for the rest). */
+/** Every path but the runway, all on whole units (8 wide for the main street, 4 for the rest). */
 const PATHS = [
   CROSS,
+  HALL_STREET,
+  HALL_LINK,
   MIDWAY,
   NORTH,
   POTION_WALK,
@@ -152,14 +156,14 @@ export function createGroundMap(maxTexture, palette) {
   for (const lawn of LAWNS) bordered(lawn, p.lawn, p.curbEdge)
   for (const patch of DIRT_PATCHES) rect(patch, p.dirt)
 
-  // The Food Courts' warm street, along their fronts and under them.
-  bordered(COURT_STREET, p.street, p.streetEdge)
+  // The training hall's front column: warm paving under the pads on the ground.
+  bordered(HALL_FLOOR, p.street, p.streetEdge)
 
   // The paths, and the band under the egg stands.
   for (const r of PATHS) bordered(r, p.path, p.pathEdge)
   bordered(EGG_BAND, p.eggBand, p.eggBandEdge)
-  // The apron round the start of the track.
-  bordered({ minX: -7, maxX: 7, minZ: TRACK_START_Z, maxZ: Math.round(PUSH_ZONE.maxZ) + 4 }, p.path, p.pathEdge)
+  // The apron in front of the gate.
+  bordered({ minX: -13, maxX: 13, minZ: GATE_Z, maxZ: GATE_Z + 5 }, p.path, p.pathEdge)
 
   // Round paved spots for the stands, the free gift, the Sphinx and the portal, and one
   // under the big Demon egg.
@@ -185,7 +189,7 @@ export function createGroundMap(maxTexture, palette) {
   disc(STATUE.x, STATUE.z, STATUE.radius + 1.0, p.pathEdge)
   disc(STATUE.x, STATUE.z, STATUE.radius + 0.4, p.squareCore)
 
-  // The walkway: one clean runway from spawn to the track, over everything it crosses -
+  // The runway: one clean carpet from spawn to the gate, over everything it crosses -
   // a light edge, a gold line, then the carpet.
   rect(RUNWAY, p.runwayEdge)
   rect({ minX: RUNWAY.minX + 1, maxX: RUNWAY.maxX - 1, minZ: RUNWAY.minZ, maxZ: RUNWAY.maxZ }, p.runwayLine)
@@ -209,13 +213,13 @@ export function createGroundMap(maxTexture, palette) {
 }
 
 /**
- * The runway's chevrons: big flat arrows up the middle of the walkway pointing to the
- * ROLL ZONE, flat on the ground (a few hundredths up: paint, not props - nothing stands
- * on the walkway). Boxes in the world's block set. In World 2 they glow.
+ * The runway's chevrons: big flat arrows up the middle of the runway pointing to the
+ * STAGE gate, flat on the ground (a few hundredths up: paint, not props - nothing stands
+ * on the runway). Boxes in the world's block set. In World 2 they glow.
  */
 export function buildRunway(blocks, palette) {
   const start = SPAWN.z - SPAWN_RADIUS - 2
-  const end = PUSH_ZONE.maxZ + 3
+  const end = GATE_Z + 6
   for (let z = start; z > end; z -= 5) {
     // Not where the streets cross.
     if ([MIDWAY, NORTH].some((r) => z > r.minZ - 1.5 && z < r.maxZ + 1.5)) continue
@@ -226,19 +230,16 @@ export function buildRunway(blocks, palette) {
 }
 
 /**
- * World 2's neon: glowing strips down both sides of the runway and along the cross
- * street's edges, a ring on spawn's gold ring, and rings round the champion's square
- * and the food shop's welcome patch (open where paths come in) - thin boxes in the
- * world's block set, so they cost no draw call. None by day (`palette.neon` is null).
+ * World 2's neon: glowing strips down both sides of the runway, a ring on spawn's gold
+ * ring, and rings round the champion's square and the food shop's welcome patch (open
+ * where paths come in) - thin boxes in the world's block set, so they cost no draw call.
+ * None by day (`palette.neon` is null).
  */
 export function buildNeonTrims(blocks, palette) {
   if (!palette.neon) return
   const [pink, cyan] = palette.neon
   const H = 0.05
   const W = 0.18
-  const alongX = (z, x0, x1, color) => {
-    if (x1 - x0 > 0.5) blocks.addOn((x0 + x1) / 2, 0, z, x1 - x0, H, W, color, STYLE.GLOW)
-  }
   const alongZ = (x, z0, z1, color) => {
     if (z1 - z0 > 0.5) blocks.addOn(x, 0, (z0 + z1) / 2, W, H, z1 - z0, color, STYLE.GLOW)
   }
@@ -263,18 +264,8 @@ export function buildNeonTrims(blocks, palette) {
   for (const side of [-1, 1]) {
     alongZ(side * rx, MIDWAY.maxZ, SPAWN.z - rim(SPAWN_RADIUS, rx), cyan)
     alongZ(side * rx, NORTH.maxZ, MIDWAY.minZ, cyan)
-    alongZ(side * rx, PUSH_ZONE.maxZ, NORTH.minZ, cyan)
+    alongZ(side * rx, GATE_Z + 5, NORTH.minZ, cyan)
   }
-  // The cross street's edges: west from spawn to the Food Courts' street (open at the
-  // potion stand's walk), east to the champion's square (round the free gift's spot).
-  const zn = CROSS.minZ + 0.5
-  const zs = CROSS.maxZ - 0.5
-  const sx = rim(SPAWN_RADIUS, SPAWN.z - zn)
-  alongX(zs, CROSS.minX + 1, SPAWN.x - sx, pink)
-  alongX(zn, CROSS.minX + 1, POTION_WALK.minX - 0.5, pink)
-  alongX(zn, POTION_WALK.maxX + 0.5, SPAWN.x - sx, pink)
-  alongX(zn, SPAWN.x + sx, STATUE.x - rim(SQUARE_RADIUS, zn - STATUE.z), pink)
-  alongX(zs, FREE_REWARD.x + rim(4, FREE_REWARD.z - zs), STATUE.x - rim(SQUARE_RADIUS, zs - STATUE.z), pink)
   // Rings: on spawn's gold ring, round the champion's square, round the welcome patch.
   ring(SPAWN.x, SPAWN.z, 2.85, 20, pink, false)
   ring(STATUE.x, STATUE.z, SQUARE_RADIUS - 0.5, 32, pink, true)

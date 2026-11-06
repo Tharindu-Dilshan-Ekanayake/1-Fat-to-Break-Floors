@@ -1,14 +1,14 @@
 import { hash2, mulberry32 } from '@shared/rng'
-import { PLAZA, TRACK_START_Z } from '@shared/world'
+import { FLOOR_LEN, floorSouth, GATE_Z, PLAZA, STAGE_HALF_W } from '@shared/world'
 
 import { STYLE } from '../materials'
-import { RIM_X } from '../push/path'
 import { PALETTE } from '../sceneStyle'
 
 /**
- * The mountains ringing the plaza: tall, jagged grey voxel peaks, turning into
- * terracotta cliffs with grass on top either side of the tape track, plus blocky
- * pines on the terraces.
+ * The mountains ringing the plaza: tall, jagged voxel peaks - in Candy Kingdom, bars of
+ * chocolate with icing poured over every terrace, turning into caramel wafer cliffs
+ * either side of the STAGE gate - with trees on the terraces (lollipops and cotton candy;
+ * blocky pines in World 2). The stages' rooms run on north underneath them.
  *
  * Heights come from a smooth value-noise field quantised into terraces, sampled on a
  * coarse grid and greedy-merged into as few boxes as possible: a few hundred instances
@@ -17,9 +17,18 @@ import { PALETTE } from '../sceneStyle'
 
 const CELL = 4
 const BOUNDS = { minX: -176, maxX: 156, minZ: -150, maxZ: 136 }
-/** The track runs north out of the plaza through this gap (its own walls fill it). */
-const CORRIDOR = { minX: -RIM_X, maxX: RIM_X, minZ: -10000, maxZ: TRACK_START_Z }
-/** Terrain this close to the track is terracotta cliff; further out, grey rock. */
+/**
+ * The yard behind the STAGE gate, open to the sky (its own walls fill it - see
+ * stageGate.js). On the terrain's grid: 12 either side, and back to the yard's north
+ * wall behind floor 0.
+ */
+const CORRIDOR = { minX: -12, maxX: 12, minZ: floorSouth(0) - FLOOR_LEN - 1, maxZ: GATE_Z }
+/**
+ * Over the stages' rooms (under the mountains north of the yard), the mountains stand on
+ * the rooms' ceilings rather than sinking below ground into the first room.
+ */
+const OVER_ROOMS = { minX: -STAGE_HALF_W - 3, maxX: STAGE_HALF_W + 3, maxZ: CORRIDOR.minZ + 0.5 }
+/** Terrain this close to the gate is terracotta cliff; further out, grey rock. */
 const CLIFF_REACH = 30
 const STEP = 3
 
@@ -68,6 +77,33 @@ const isCliff = (x, z) => distanceOutside(CORRIDOR, x, z) < CLIFF_REACH && z < P
 const TREE_HALF_WIDTH = 2.6
 
 /**
+ * A candy tree standing on `base`: a lollipop (a white stick, a big round swirl turned to
+ * `yaw`) or a cotton-candy tree (a stick under three fluffy puffs) - which, by `kind`
+ * (0 or 1). Colours from `colors.leaves`, picked by `k`.
+ */
+export function addCandyTree(blocks, x, base, z, scale, k, kind, yaw, colors) {
+  const s = scale
+  const pick = (n) => colors.leaves[(k + n) % colors.leaves.length]
+  if (kind === 0) {
+    const stick = 5.4 * s
+    blocks.addOn(x, base, z, 0.36 * s, stick, 0.36 * s, colors.trunk, STYLE.SMOOTH)
+    const y = base + stick + 1.5 * s
+    // The swirl: an eight-sided disc, a white ring inside it, and a bright middle.
+    blocks.add(x, y, z, 3.4 * s, 3.4 * s, 0.7 * s, pick(0), STYLE.SMOOTH, yaw)
+    blocks.add(x, y, z, 3.4 * s, 3.4 * s, 0.7 * s, pick(0), STYLE.SMOOTH, yaw, 0, Math.PI / 4)
+    blocks.add(x, y, z, 2.3 * s, 2.3 * s, 0.76 * s, '#ffffff', STYLE.SMOOTH, yaw, 0, Math.PI / 8)
+    blocks.add(x, y, z, 1.4 * s, 1.4 * s, 0.82 * s, pick(2), STYLE.SMOOTH, yaw, 0, Math.PI / 4)
+    return
+  }
+  const stick = 4.2 * s
+  blocks.addOn(x, base, z, 0.36 * s, stick, 0.36 * s, colors.trunk, STYLE.SMOOTH)
+  const y = base + stick
+  blocks.addOn(x, y - 0.3 * s, z, 3.4 * s, 2.4 * s, 3.4 * s, pick(0), STYLE.SMOOTH, yaw)
+  blocks.addOn(x + 0.4 * s, y + 1.4 * s, z - 0.3 * s, 2.6 * s, 2.0 * s, 2.6 * s, pick(3), STYLE.SMOOTH, yaw + 0.785)
+  blocks.addOn(x - 0.3 * s, y + 2.7 * s, z + 0.2 * s, 1.6 * s, 1.4 * s, 1.6 * s, pick(0), STYLE.SMOOTH, yaw + 0.3)
+}
+
+/**
  * Adds a tall blocky pine standing on `base`: a trunk and five stacked tiers narrowing to
  * a point, as in the reference.
  *
@@ -76,6 +112,11 @@ const TREE_HALF_WIDTH = 2.6
  * @param {{ leaves: string[], trunk: string }} [colors] defaults to the day palette's
  */
 export function addTree(blocks, x, base, z, scale = 1, rand = Math.random, colors = PALETTE) {
+  if (colors.candy) {
+    const k = Math.floor(rand() * 5)
+    addCandyTree(blocks, x, base, z, scale, k, rand() < 0.55 ? 0 : 1, rand() * Math.PI, colors)
+    return
+  }
   const s = scale
   const trunk = 2.6 * s
   blocks.addOn(x, base, z, 0.9 * s, trunk, 0.9 * s, colors.trunk)
@@ -122,13 +163,26 @@ export function buildTerrain(blocks, { treeDensity = 1, palette = PALETTE } = {}
     const depth = (run.j1 - run.j0 + 1) * CELL
     const x = BOUNDS.minX + run.i0 * CELL + width / 2
     const z = BOUNDS.minZ + run.j0 * CELL + depth / 2
-    // Sunk slightly so no seam shows where the mountains meet the ground plane.
+    // Sunk slightly so no seam shows where the mountains meet the ground plane - but
+    // over the stages' rooms, standing inside the first room's ceiling instead.
+    const overRooms = x - width / 2 < OVER_ROOMS.maxX && x + width / 2 > OVER_ROOMS.minX && z - depth / 2 < OVER_ROOMS.maxZ
+    const base = overRooms ? 0.5 : -0.5
     if (run.kind === 2) {
-      blocks.addOn(x, -0.5, z, width, run.h + 0.5, depth, cliff, cliffStyle)
+      blocks.addOn(x, base, z, width, run.h - base, depth, cliff, cliffStyle)
     } else {
-      // Grey rock in a few shades, by height, so the terraces read.
+      // Rock in a few shades, by height, so the terraces read.
       const shade = palette.rock[(run.h / STEP) % palette.rock.length]
-      blocks.addOn(x, -0.5, z, width, run.h + 0.5, depth, shade, STYLE.STUDS)
+      blocks.addOn(x, base, z, width, run.h - base, depth, shade, STYLE.STUDS)
+    }
+    // Icing poured over the terrace, a little over its edges - and, but on LOW, a drip
+    // down one side.
+    if (palette.icing) {
+      const icing = palette.icing[(run.h / STEP) % palette.icing.length]
+      blocks.addOn(x, run.h, z, width + 0.4, 0.45, depth + 0.4, icing, STYLE.SMOOTH)
+      if (treeDensity < 0.75) return
+      const along = (hash2(run.i0, run.j0, 9) - 0.5) * Math.max(0, width - 2)
+      const length = 0.8 + hash2(run.j0, run.i1, 3) * 1.6
+      blocks.add(x + along, run.h - length / 2 + 0.2, z + depth / 2 + 0.12, 0.9, length, 0.3, icing, STYLE.SMOOTH)
     }
   }
 
@@ -195,7 +249,7 @@ export function buildTerrain(blocks, { treeDensity = 1, palette = PALETTE } = {}
     }
   }
 
-  // Pines along the top of the walls round the plaza - over the Food Courts on the west,
+  // Pines along the top of the walls round the plaza - over the Training Pads on the west,
   // and round the other sides - rather than down in the plaza, where they'd hide things.
   const wallTrees = [
     [PLAZA.minX - 3, 26],

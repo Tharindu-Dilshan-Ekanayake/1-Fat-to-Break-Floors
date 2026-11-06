@@ -7,11 +7,11 @@ import {
   EGGS,
   levelCap,
   fatForLevel,
-  PUSH_START,
   rebirthMultiplier,
-  RUN_SPEED,
-  SAFE_LENGTH,
   SHOP,
+  SLAM_INTERVAL,
+  SLAMS_PER_FLOOR,
+  TRAIN_ZONES,
   TUTORIAL,
   walkSpeed,
   WORLD_PORTALS,
@@ -32,32 +32,54 @@ import {
   levelXp,
   fatPacks,
   normalizeProfile,
+  padWins,
   skipRebirth,
-  TRACKS,
+  slamsToBreak,
+  STAGE_SETS,
   coinsMultiplier,
 } from '../../shared/logic.js'
 import { PlayerSession } from '../../shared/session.js'
-import { BENCH_HALF, benchAt, benchSeat, EGG_STANDS, FOOD_COUNTER, FOOD_HUT, isPushReturn, LEADERBOARDS, PORTALS, PUSH_RETURN, PUSH_ZONE, SPAWN, STATIC_COLLIDERS, STATUE, WALKWAY, zoneCenter, ZONE_COUNT, zoneDeckRect } from '../../shared/world.js'
+import {
+  benchAt,
+  benchSeat,
+  clampToLevel,
+  EGG_STANDS,
+  floorRect,
+  floorTopY,
+  FOOD_COUNTER,
+  FOOD_HUT,
+  GATE_Z,
+  groundAt,
+  LEADERBOARDS,
+  padHeight,
+  padRect,
+  PORTALS,
+  roomFloorY,
+  roomRect,
+  SEATS,
+  SPAWN,
+  STAGE_RETURN,
+  STATIC_COLLIDERS,
+  STATUE,
+  WALKWAY,
+  YARD,
+  zoneCenter,
+  ZONE_COUNT,
+  zoneDeckRect,
+} from '../../shared/world.js'
 
-/** World 1's track, which most of these tests roll down. */
-const {
-  stages: STAGES,
-  length: TRACK_LENGTH,
-  tapes: TAPES,
-  isSlope,
-  reachOf,
-  runCoins,
-  tapesFor,
-  safeStart,
-  stageAt,
-  stageStart,
-  stageTop,
-} = TRACKS[0]
-
-/** Sat on Food Court `i`'s middle bench. */
-const onBench = (i) => ({ ...benchSeat(i, zoneCenter(i).x, zoneCenter(i).z), y: 0.4 })
-const inPushZone = () => ({ x: 0, y: 0, z: (PUSH_ZONE.minZ + PUSH_ZONE.maxZ) / 2 })
-const rounded = (m) => Math.round(m * 100) / 100
+/** Sat on a chair of training pad `i`. */
+const onBench = (i) => ({ ...benchSeat(i, zoneCenter(i).x, zoneCenter(i).z), y: padHeight(i) })
+/** The middle of floor `i`, `up` over its top. */
+const onFloorAt = (i, up = 0) => {
+  const r = floorRect(i)
+  return { x: (r.minX + r.maxX) / 2, y: floorTopY(i) + up, z: (r.minZ + r.maxZ) / 2 }
+}
+/** The middle of room `i`'s WINS pad. */
+const onPadAt = (i) => {
+  const r = padRect(i)
+  return { x: (r.minX + r.maxX) / 2, y: roomFloorY(i), z: (r.minZ + r.maxZ) / 2 }
+}
 
 /** A session for `profile` with its events collected, standing at `pos`. */
 function sessionAt(pos, profile = createProfile('a', 'A')) {
@@ -66,14 +88,13 @@ function sessionAt(pos, profile = createProfile('a', 'A')) {
   return { s, events, p: profile, of: (type) => events.filter((e) => e.type === type) }
 }
 
-/** Reports a run's progress every quarter second at RUN_SPEED, from time `t0` until it gets to `meter`. Returns the time. */
-function runTo(s, meter, t0 = 0, x = 0) {
+/** Slams the floor ahead from `pos` once a slam-interval apart, from time `t0`, until it breaks (or `max` slams). Returns the time. */
+function slamThrough(s, pos, t0 = 0, max = 400) {
+  const target = s.level + 1
   let t = t0
-  let m = s.push?.meter ?? PUSH_START
-  while (m < meter) {
-    m = Math.min(meter, m + RUN_SPEED * 0.25)
-    t += 250
-    s.handle('pushAt', { meter: m, x }, t)
+  for (let i = 0; i < max && s.level < target; i += 1) {
+    t += SLAM_INTERVAL * 1000 + 10
+    s.handle('slam', { x: pos.x, z: pos.z }, t)
   }
   return t
 }
@@ -110,7 +131,7 @@ test('Fat keeps piling on at max level; only the level stops', () => {
   assert.equal(p.stats.bestFat, 1000)
 })
 
-test('foods, Food Courts and rebirths multiply bites', () => {
+test('foods, training pads and rebirths multiply bites', () => {
   const p = createProfile('a', 'A')
   applyBite(p, -1, 0)
   assert.equal(p.fat, 1)
@@ -123,13 +144,13 @@ test('foods, Food Courts and rebirths multiply bites', () => {
   assert.equal(p.fat, 1 + 3 + 3 * 2 * 1.5)
 })
 
-test('locked Food Courts give nothing', () => {
+test('locked training pads give nothing', () => {
   const p = createProfile('a', 'A')
   assert.equal(applyTrain(p, 1, 0).ok, false)
   assert.equal(p.fat, 0)
 })
 
-test('rebirth needs max level, resets Fat and what you ate, keeps Coins and foods', () => {
+test('rebirth needs max level, resets Fat and what you ate, keeps Wins and foods', () => {
   const p = createProfile('a', 'A')
   assert.equal(applyRebirth(p).ok, false)
   p.ownedFoods.push('fries')
@@ -144,7 +165,7 @@ test('rebirth needs max level, resets Fat and what you ate, keeps Coins and food
   assert.deepEqual(p.ownedFoods, ['cookie', 'fries'])
 })
 
-test('skipping to a rebirth costs Coins', () => {
+test('skipping to a rebirth costs Wins', () => {
   const p = createProfile('a', 'A')
   assert.equal(skipRebirth(p).ok, false)
   p.coins = 1e9
@@ -153,57 +174,46 @@ test('skipping to a rebirth costs Coins', () => {
   assert.ok(p.coins < 1e9)
 })
 
-test('each tape takes its own Fat to smash: a roll smashes every one it can, and the next stops it', () => {
-  assert.deepEqual(TAPES.slice(0, 4).map((tape) => tape.need), [20, 200, 500, 1000])
-  assert.equal(tapesFor(19), 0)
-  assert.equal(tapesFor(20), 1)
-  assert.equal(tapesFor(3000), 5, '20, 200, 500, 1000 and 2000 - not 5000')
-  // Stopped dead at the first tape too strong; enough for all of them, all the way down.
-  assert.equal(reachOf(10), stageTop(0))
-  assert.equal(reachOf(3000), stageTop(5))
-  assert.equal(reachOf(1e15), TRACK_LENGTH)
-  assert.equal(stageTop(STAGES.length - 1), TRACK_LENGTH)
+test('every floor takes its own HP to break, a slam of your Fat at a time', () => {
+  const [w1] = STAGE_SETS
+  assert.deepEqual(w1.stages.slice(0, 3).map((st) => st.hp), [80, 800, 2000])
+  assert.equal(slamsToBreak(80, 20), 4)
+  assert.equal(slamsToBreak(80, 80), 1)
+  assert.equal(slamsToBreak(80, 0), Infinity)
+  // What a dive on some Fat gets you in good time: every floor it breaks in four slams or fewer.
+  assert.equal(w1.reachFor(19), 0)
+  assert.equal(w1.reachFor(20), 1)
+  assert.equal(w1.reachFor(500), 3, '80, 800 and 2000 - not 4000')
+  assert.equal(w1.runWins(19), 0)
+  assert.equal(w1.runWins(20), w1.stages[0].wins)
+  assert.equal(w1.reachFor(1e15), w1.count)
 })
 
-test('tapes sit at the end of every slope, with a flat checkpoint past each', () => {
-  assert.equal(TRACK_LENGTH, STAGES.reduce((sum, st) => sum + st.length, 0) + (STAGES.length - 1) * SAFE_LENGTH)
-  assert.equal(safeStart(1), STAGES[0].length)
-  assert.equal(stageStart(1), STAGES[0].length + SAFE_LENGTH)
-  assert.equal(isSlope(5), true)
-  assert.equal(isSlope(safeStart(1) + 3), false)
-  assert.equal(isSlope(stageStart(1) + 5), true)
-  assert.equal(stageAt(safeStart(1) + 1), 1)
-  assert.equal(TAPES.length, STAGES.length)
-  TAPES.forEach((tape, i) => assert.equal(tape.meter, stageTop(i)))
-  // A run pays every tape it bursts: with 300 Fat, the first two.
-  assert.equal(runCoins(19), 0)
-  assert.equal(runCoins(20), 10)
-  assert.equal(tapesFor(300), 2)
-  assert.equal(runCoins(300), 10 + 100)
-})
-
-test('the first run pays enough for the first food, as the guide asks', () => {
-  assert.ok(runCoins(TUTORIAL[0].fat) >= FOODS[1].cost)
+test('the first dive pays enough for the first food, as the guide asks', () => {
+  assert.ok(STAGE_SETS[0].runWins(TUTORIAL[0].fat) >= FOODS[1].cost)
   assert.deepEqual(
     TUTORIAL.map((step) => step.event),
-    ['eat', 'tape', 'buyFood'],
-    'eat, burst the first tape, buy a food - and that is all',
+    ['eat', 'floor', 'wins', 'buyFood'],
+    'eat, break the first floor, claim its pad, buy a food - and that is all',
   )
 })
 
-test('the guide: eat at the table, burst the first tape, buy a food, done', () => {
+test('the guide: eat at the table, break the first floor, claim the pad, buy a food, done', () => {
   const p = createProfile('a', 'A')
   const pos = onBench(0)
   const { s } = sessionAt(pos, p)
   s.handle('enterZone', { zone: 0 }, 0)
   for (let t = 0; s.profile.fat < TUTORIAL[0].fat && t < 200; t += 1) s.tick(1, t * 1000)
-  assert.equal(p.tutorialStep, 1, 'fat enough for the first tape')
-  Object.assign(pos, inPushZone())
+  assert.equal(p.tutorialStep, 1, 'fat enough for the first floor')
   s.handle('leaveZone', {}, 0)
-  s.handle('startPush', {}, 300000)
-  const t = runTo(s, stageTop(0), 300000)
-  assert.equal(p.tutorialStep, 2, 'burst through the tape')
-  s.handle('endPush', { reason: 'tired' }, t + 1000)
+  Object.assign(pos, onFloorAt(0, 1))
+  let t = slamThrough(s, pos, 300000)
+  assert.equal(s.level, 0, 'through the floor')
+  assert.equal(p.tutorialStep, 2)
+  Object.assign(pos, onPadAt(0))
+  s.handle('claimWins', pos, (t += 1000))
+  assert.equal(p.tutorialStep, 3, 'claimed the pad')
+  assert.ok(p.coins >= FOODS[1].cost)
   Object.assign(pos, { x: FOOD_COUNTER.x, y: 0, z: FOOD_COUNTER.z })
   s.handle('buyFood', { id: FOODS[1].id }, t + 2000)
   assert.equal(p.tutorialStep, TUTORIAL.length, 'and the guide is over')
@@ -212,13 +222,13 @@ test('the guide: eat at the table, burst the first tape, buy a food, done', () =
 test('the guide skips a step already done out of order', () => {
   const p = createProfile('a', 'A')
   p.fat = 25
-  const { s } = sessionAt(inPushZone(), p)
-  s.handle('startPush', {}, 0)
-  runTo(s, stageTop(0))
-  assert.equal(p.tutorialStep, 2, 'ran without eating at a table: on to buying')
+  const pos = onFloorAt(0)
+  const { s } = sessionAt(pos, p)
+  slamThrough(s, pos)
+  assert.equal(p.tutorialStep, 2, 'slammed without eating at a table: on to the pad')
 })
 
-test('foods are bought in order with Coins', () => {
+test('foods are bought in order with Wins', () => {
   const p = createProfile('a', 'A')
   p.coins = 1000
   assert.equal(buyFood(p, FOODS[3].id).ok, false)
@@ -242,7 +252,7 @@ test('Fat packs scale with your level', () => {
   assert.equal(p.coins, 0)
 })
 
-test('egg odds add up to 100% and hatching charges coins', () => {
+test('egg odds add up to 100% and hatching charges Wins', () => {
   for (const [id, egg] of Object.entries(EGGS)) {
     assert.equal(egg.pets.reduce((s, [, w]) => s + w, 0), 100, id)
   }
@@ -278,20 +288,21 @@ test('the session only feeds you sat at a table where the player really is', () 
   const { s } = sessionAt(pos)
   s.handle('enterZone', { zone: 0 }, 0)
   s.tick(2, 0)
-  assert.equal(s.profile.fat, 0, 'claimed a Food Court from spawn')
-  // Standing on the deck, off its bench, gives nothing.
-  Object.assign(pos, { x: zoneCenter(0).x + 4.5, y: 0.4, z: zoneCenter(0).z + 3.5 })
+  assert.equal(s.profile.fat, 0, 'claimed a training pad from spawn')
+  // Standing on the deck, off its chairs, gives nothing.
+  Object.assign(pos, { x: zoneCenter(0).x + 4.5, y: padHeight(0), z: zoneCenter(0).z + 4.5 })
   s.tick(2, 0)
-  assert.equal(s.profile.fat, 0, 'on the deck but not on the bench')
+  assert.equal(s.profile.fat, 0, 'on the deck but not on a chair')
   Object.assign(pos, onBench(0))
   s.tick(2, 0)
   assert.ok(s.profile.fat > 0)
-  // Anywhere along the long bench counts, side by side with others.
+  // Any chair of the pad counts, side by side with others.
   let before = s.profile.fat
-  Object.assign(pos, { ...onBench(0), z: zoneCenter(0).z + BENCH_HALF - 0.4 })
+  const other = SEATS.filter((seat) => seat.zone === 0).at(-1)
+  Object.assign(pos, { x: other.x, z: other.z })
   s.tick(2, 0)
-  assert.ok(s.profile.fat > before, 'near the end of the bench')
-  // Another Food Court's bench isn't this one's.
+  assert.ok(s.profile.fat > before, 'at another chair')
+  // Another pad's chair isn't this one's.
   Object.assign(pos, onBench(1))
   before = s.profile.fat
   s.tick(2, 0)
@@ -308,91 +319,133 @@ test('bites are limited to a human clicking rate', () => {
   assert.ok(p.fat <= 22, `got ${p.fat}`)
 })
 
-test('bites at a Food Court are multiplied by it', () => {
+test('bites at a training pad are multiplied by it', () => {
   const pos = onBench(1)
   const p = createProfile('a', 'A')
   p.rebirths = 1
   const { s } = sessionAt(pos, p)
   s.handle('enterZone', { zone: 1 }, 0)
   s.handle('eat', {}, 0)
-  assert.equal(p.fat, 1 * 2 * 1.5)
+  assert.equal(p.fat, 1 * TRAIN_ZONES[1].mult * 1.5)
 })
 
-test('a run starts only from the run zone, only with Fat, and only one at a time', () => {
-  const pos = inPushZone()
+test('slams only count on the floor ahead, only with Fat, and no faster than a person slams', () => {
   const p = createProfile('a', 'A')
+  const pos = { x: 0, y: 0, z: 10 }
   const { s, of } = sessionAt(pos, p)
-  s.handle('startPush', {}, 1000)
-  assert.equal(of('push').length, 0, 'no Fat, no run')
-  p.fat = 50
-  Object.assign(pos, { x: 0, z: 14 })
-  s.handle('startPush', {}, 1000)
-  assert.equal(of('push').length, 0, 'not from the plaza')
-  Object.assign(pos, inPushZone())
-  s.handle('startPush', {}, 1000)
-  assert.equal(of('push').length, 1)
-  s.handle('startPush', {}, 1500)
-  assert.equal(of('push').length, 1, 'no second run while running')
-  s.handle('eat', {}, 1600)
-  assert.equal(p.fat, 50, 'no eating mid-run')
-})
-
-test('a roll: every tape its Fat smashes pays once, the next stops it, and you keep your Fat', () => {
-  const p = createProfile('a', 'A')
-  p.fat = 300
-  const { s, of } = sessionAt(inPushZone(), p)
-  s.handle('startPush', {}, 0)
-  assert.deepEqual(of('push')[0].payload, { reach: stageTop(2), power: 300, start: PUSH_START, x: 0 })
-  // Claiming the far end at once: only as far as rolling flat out could take you.
-  s.handle('pushAt', { meter: 500, x: 0 }, 300)
-  assert.ok(s.push.meter < stageTop(0), `got ${s.push.meter}`)
-  assert.equal(p.coins, 0)
-  // Going back up is ignored.
-  const before = s.push.meter
-  s.handle('pushAt', { meter: 0, x: 0 }, 400)
-  assert.equal(s.push.meter, before)
-  // Down to the first tape: it pays, once.
-  const t = runTo(s, stageTop(0) + 1, 400)
-  assert.equal(p.coins, TAPES[0].coins)
-  assert.deepEqual(of('tape')[0].payload, { stage: 0, coins: TAPES[0].coins, top: false })
-  s.handle('pushAt', { meter: stageTop(0) + 1, x: 0 }, t + 100)
-  assert.equal(p.coins, TAPES[0].coins)
-  // On through the second; never past the third (500 Fat), however far you report.
-  runTo(s, TRACK_LENGTH, t)
-  assert.equal(s.push.meter, stageTop(2))
-  assert.equal(p.coins, TAPES[0].coins + TAPES[1].coins)
-  assert.equal(p.stats.tapes, 2)
-  // Bounced off it: back to the lobby - as fat as you went.
-  s.handle('endPush', { reason: 'blocked' }, 600000)
-  assert.equal(s.push, null)
-  assert.deepEqual(of('pushEnd')[0].payload, { reason: 'blocked', coins: TAPES[0].coins + TAPES[1].coins, tapes: 2 })
-  assert.equal(p.fat, 300)
-})
-
-test('however a roll ends, you keep your Fat', () => {
-  const p = createProfile('a', 'A')
-  p.fat = 300
-  p.eaten = 300
-  const { s, of } = sessionAt(inPushZone(), p)
-  s.handle('startPush', {}, 0)
-  const t = runTo(s, stageTop(0) / 2)
-  s.handle('endPush', { reason: 'left' }, t + 100)
-  assert.equal(of('pushEnd')[0].payload.reason, 'left')
-  assert.equal(p.fat, 300)
-  assert.equal(p.eaten, 300)
-})
-
-test('a run nobody reports on ends by itself', () => {
-  const p = createProfile('a', 'A')
   p.fat = 10
-  const { s, of } = sessionAt(inPushZone(), p)
-  s.handle('startPush', {}, 0)
-  s.tick(0.1, 31000)
-  assert.equal(s.push, null)
-  assert.equal(of('pushEnd')[0].payload.reason, 'timeout')
+  s.handle('slam', pos, 1000)
+  assert.equal(of('slam').length, 0, 'not from the plaza')
+  Object.assign(pos, onFloorAt(0))
+  p.fat = 0
+  s.handle('slam', pos, 2000)
+  assert.equal(of('slam').length, 0, 'no Fat, no slam')
+  p.fat = 10
+  s.handle('slam', { x: pos.x + 10, z: pos.z }, 3000)
+  assert.equal(of('slam').length, 0, 'not from somewhere we never saw you')
+  s.handle('slam', pos, 3000)
+  assert.deepEqual(of('slam')[0].payload, { stage: 0, hp: 70, max: 80, damage: 10 })
+  // A burst at once: only the banked slams count.
+  for (let i = 0; i < 20; i += 1) s.handle('slam', pos, 3001)
+  assert.ok(of('slam').length <= 4, `got ${of('slam').length}`)
+  // Slamming doesn't burn your Fat.
+  assert.equal(p.fat, 10)
 })
 
-test('the Future World portal badges you only from its swirl, with its Coins', () => {
+test('a floor breaks at 0 HP: you are in its room, and the next floor is the one ahead', () => {
+  const p = createProfile('a', 'A')
+  p.fat = 30
+  const pos = onFloorAt(0)
+  const { s, of } = sessionAt(pos, p)
+  slamThrough(s, pos)
+  assert.equal(of('slam').length, 3, '80 HP in slams of 30')
+  assert.deepEqual(of('floorBreak')[0].payload, { stage: 0 })
+  assert.equal(s.level, 0)
+  assert.equal(p.stats.floors, 1)
+  assert.equal(p.stats.bestFloor, 1)
+  assert.equal(p.stats.runs, 1)
+  // Floor 0 again is behind you now; floor 1, at the far end of the room, is ahead.
+  s.handle('slam', pos, 1e6)
+  assert.equal(of('slam').length, 3)
+  Object.assign(pos, onFloorAt(1, 0.5))
+  s.handle('slam', pos, 1e6 + 1000)
+  assert.equal(of('slam').at(-1).payload.stage, 1)
+  assert.equal(of('slam').at(-1).payload.hp, 800 - 30)
+})
+
+test('the WINS pad pays its stage, boosted, and sends you home with every floor whole again', () => {
+  const p = createProfile('a', 'A')
+  p.fat = 1000
+  p.passes.coinsX2 = true
+  const pos = onFloorAt(0)
+  const { s, of } = sessionAt(pos, p)
+  let t = slamThrough(s, pos)
+  Object.assign(pos, onFloorAt(1, 0.2))
+  t = slamThrough(s, pos, t)
+  assert.equal(s.level, 1)
+  // Not from room 0's pad, now you're in room 1; not from beside the pad.
+  Object.assign(pos, onPadAt(0))
+  s.handle('claimWins', pos, (t += 100))
+  assert.equal(p.coins, 0)
+  Object.assign(pos, { ...onPadAt(1), x: -6 })
+  s.handle('claimWins', pos, (t += 100))
+  assert.equal(p.coins, 0)
+  Object.assign(pos, onPadAt(1))
+  s.handle('claimWins', pos, (t += 100))
+  assert.equal(p.coins, WORLDS[0].stages[1].wins * 2)
+  assert.equal(padWins(p, 1, 0), WORLDS[0].stages[1].wins * 2)
+  assert.deepEqual(of('wins')[0].payload, { stage: 1, wins: WORLDS[0].stages[1].wins * 2, last: false })
+  assert.deepEqual(of('teleport')[0].payload, { x: STAGE_RETURN.x, z: STAGE_RETURN.z, yaw: STAGE_RETURN.yaw, reason: 'wins' })
+  assert.equal(s.level, -1)
+  assert.equal(s.dive, null)
+  // Once only.
+  s.handle('claimWins', pos, (t += 100))
+  assert.equal(of('wins').length, 1)
+  assert.equal(p.fat, 1000, 'as fat as you went')
+})
+
+test('leaving the stages pays nothing; walking off floor 0 heals it', () => {
+  const p = createProfile('a', 'A')
+  p.fat = 100
+  const pos = onFloorAt(0)
+  const { s, of } = sessionAt(pos, p)
+  slamThrough(s, pos)
+  s.handle('leaveStage', {}, 9000)
+  assert.equal(of('teleport')[0].payload.reason, 'left')
+  assert.equal(p.coins, 0)
+  // Slammed a bit, then walked back out into the plaza: floor 0 is whole again.
+  p.fat = 10
+  Object.assign(pos, onFloorAt(0))
+  s.handle('slam', pos, 20000)
+  assert.equal(of('slam').at(-1).payload.hp, 70)
+  Object.assign(pos, { x: 0, y: 0, z: GATE_Z + 10 })
+  s.tick(0.1, 21000)
+  assert.equal(s.dive, null)
+  assert.deepEqual(of('slam').at(-1).payload, { stage: 0, hp: 80, max: 80, damage: 0 })
+})
+
+test('the deepest pad of a world is rock bottom', () => {
+  const p = createProfile('a', 'A')
+  p.fat = 1e15
+  const pos = onFloorAt(0)
+  const { s, of } = sessionAt(pos, p)
+  let t = 0
+  const last = STAGE_SETS[0].count - 1
+  for (let i = 0; i <= last; i += 1) {
+    Object.assign(pos, onFloorAt(i, 0.3))
+    t = slamThrough(s, pos, t)
+  }
+  assert.equal(s.level, last)
+  // Nothing more to slam.
+  s.handle('slam', pos, (t += 1000))
+  assert.equal(of('floorBreak').length, last + 1)
+  Object.assign(pos, onPadAt(last))
+  s.handle('claimWins', pos, (t += 1000))
+  assert.equal(of('wins')[0].payload.last, true)
+  assert.ok(p.badges.includes('top'))
+})
+
+test('the World 2 portal badges you only from its swirl, with its Wins', () => {
   const pos = { x: 0, y: 0, z: 0 }
   const { s } = sessionAt(pos)
   const portal = PORTALS[0]
@@ -401,12 +454,12 @@ test('the Future World portal badges you only from its swirl, with its Coins', (
   assert.deepEqual(s.profile.badges, [], 'not from spawn')
   Object.assign(pos, { x: portal.x, z: portal.z })
   s.handle('portal', {}, 0)
-  assert.deepEqual(s.profile.badges, [], 'one Coin short')
+  assert.deepEqual(s.profile.badges, [], 'one Win short')
   s.profile.coins += 1
   s.handle('portal', {}, 0)
   assert.deepEqual(s.profile.badges, [portal.id])
-  assert.equal(s.profile.world, 1, 'into Future World')
-  // Back through to World 1, and - having been - in again without the Coins.
+  assert.equal(s.profile.world, 1, 'into World 2')
+  // Back through to World 1, and - having been - in again without the Wins.
   s.handle('portal', {}, 0)
   assert.equal(s.profile.world, 0)
   s.profile.coins = 0
@@ -414,37 +467,55 @@ test('the Future World portal badges you only from its swirl, with its Coins', (
   assert.equal(s.profile.world, 1)
 })
 
-test('World 1 has 13 tapes and Future World 7, each paying Coins for how hard it is', () => {
+test('World 1 has 13 stages and World 2 7, each harder and paying more than the last', () => {
   assert.equal(WORLDS[0].stages.length, 13)
   assert.equal(WORLDS[1].stages.length, 7)
-  assert.deepEqual(
-    WORLDS[0].stages.map((st) => st.need),
-    [20, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 2000000],
-  )
-  // Every tape pays half its slope's need.
-  for (const world of WORLDS) for (const st of world.stages) assert.equal(st.coins, st.need / 2, st.id)
-  assert.equal(TRACKS[0].runCoins(1e15), WORLDS[0].stages.reduce((sum, st) => sum + st.coins, 0))
-  // Every stage of every world needs more than the one before it.
-  for (const world of WORLDS) world.stages.forEach((st, i) => i && assert.ok(st.need > world.stages[i - 1].need, st.id))
+  assert.equal(WORLDS[1].name, 'World 2')
+  for (const world of WORLDS) {
+    world.stages.forEach((st, i) => {
+      if (!i) return
+      assert.ok(st.hp > world.stages[i - 1].hp, `${st.id} harder`)
+      assert.ok(st.wins > world.stages[i - 1].wins, `${st.id} pays more`)
+    })
+  }
+  // A floor takes SLAMS_PER_FLOOR slams of the Fat a player has by then: the first, of the tutorial's Fat.
+  assert.equal(WORLDS[0].stages[0].hp, TUTORIAL[0].fat * SLAMS_PER_FLOOR)
 })
 
-test('a roll in World 2 is on its track', () => {
-  assert.equal(WORLDS[1].name, 'World 2')
+test('a dive in World 2 is down its own stages', () => {
   const p = createProfile('a', 'A')
   p.world = 1
-  p.fat = 5000000
-  const { s, of } = sessionAt(inPushZone(), p)
-  const track = TRACKS[1]
-  s.handle('startPush', {}, 0)
-  assert.equal(of('push')[0].payload.reach, track.stageTop(1), 'its first tape takes 5M, its second 50M')
-  runTo(s, track.stageTop(0))
-  assert.equal(p.coins, track.tapes[0].coins)
+  p.fat = WORLDS[1].stages[0].hp
+  const pos = onFloorAt(0)
+  const { s, of } = sessionAt(pos, p)
+  slamThrough(s, pos)
+  assert.equal(of('slam').length, 1, 'one slam of its HP')
+  assert.equal(of('slam')[0].payload.max, WORLDS[1].stages[0].hp)
+  Object.assign(pos, onPadAt(0))
+  s.handle('claimWins', pos, 1e6)
+  assert.equal(p.coins, WORLDS[1].stages[0].wins)
 })
 
-test('only the trip back from the run zone skips the speed check', () => {
-  assert.equal(isPushReturn(inPushZone(), PUSH_RETURN), true)
-  assert.equal(isPushReturn(SPAWN, PUSH_RETURN), false, 'not from elsewhere in the lobby')
-  assert.equal(isPushReturn(inPushZone(), SPAWN), false, 'not to anywhere else')
+test('where you can be is your level: the lobby and yard, or the room you broke into', () => {
+  // The yard and floor 0 are part of the lobby; rooms are below and walled.
+  assert.deepEqual(clampToLevel(-1, 0, floorRect(0).minZ + 2), { x: 0, z: floorRect(0).minZ + 2 })
+  const deep = clampToLevel(-1, 0, roomRect(0).minZ)
+  assert.ok(deep.z >= YARD.minZ, 'no walking into room 0 from the lobby')
+  const inRoom = clampToLevel(2, 30, roomRect(2).minZ - 50)
+  assert.ok(inRoom.x < 9 && inRoom.z > roomRect(2).minZ, 'room 2 is walled in')
+  // Each room's floor is a drop below the floor above it, and the next floor is flush with it.
+  assert.equal(groundAt(-1, 0, 0), 0)
+  assert.equal(groundAt(0, 0, -70), roomFloorY(0))
+  assert.equal(floorTopY(1), roomFloorY(0))
+  // Floor i + 1 is at the far end of room i, and room i + 1 is under it.
+  for (let i = 0; i < 5; i += 1) {
+    const next = floorRect(i + 1)
+    const room = roomRect(i)
+    assert.equal(next.minZ, room.minZ, `floor ${i + 1} at the north end of room ${i}`)
+    assert.equal(roomRect(i + 1).maxZ, next.maxZ, `room ${i + 1} under floor ${i + 1}`)
+    const pad = padRect(i)
+    assert.ok(pad.maxZ < floorRect(i).minZ && pad.minZ > next.maxZ, `pad ${i} between where you land and the next floor`)
+  }
 })
 
 test('walking speed grows with every level ever reached, and never drops on rebirth', () => {
@@ -489,7 +560,7 @@ test('only brand-new players get the tutorial', () => {
   assert.equal(reborn.tutorialStep, TUTORIAL.length)
 })
 
-test('the shop sells for Coins only', () => {
+test('the shop sells for Wins only', () => {
   const p = createProfile('a', 'A')
   const { s } = sessionAt({ x: 0, z: 0 }, p)
   s.handle('purchase', { productId: 'fatX2' }, 0)
@@ -516,7 +587,7 @@ test('the store: x3 and VIP passes stack, and bundles give three of a thing', ()
   assert.equal(buyShopItem(p, 'vip').ok, false, 'a pass is bought once')
 })
 
-test('auras are worn when bought and multiply Coins', () => {
+test('auras are worn when bought and multiply Wins', () => {
   const p = createProfile('a', 'A')
   const { s } = sessionAt({ x: 0, z: 0 }, p)
   p.coins = SHOP.auraLightning.price
@@ -529,29 +600,31 @@ test('auras are worn when bought and multiply Coins', () => {
   assert.equal(p.equippedAura, null, 'not one you never bought')
 })
 
-test('Snack Town: Food Courts in order on the left, the Food Shop on the right, eggs and boards behind, the walk to the track clear', () => {
-  // Facing north from spawn: the Food Courts down the left, in order from the back; the
-  // Food Shop hut on the right; the eggs and leaderboards behind; the statue off to the side.
+test('Snack Town: the training hall on the right in order, the Food Shop on the left, eggs and boards behind, the walk to the gate clear', () => {
+  // Facing north from spawn: the training pads to the right, in a grid rising away from
+  // the runway; the Food Shop hut on the left; the eggs and leaderboards behind.
   for (let i = 0; i < ZONE_COUNT; i += 1) {
-    assert.ok(zoneCenter(i).x < SPAWN.x - 20, `court ${i} on the left`)
-    if (i > 0) assert.ok(zoneCenter(i).z < zoneCenter(i - 1).z, `court ${i} after court ${i - 1}, on up the column`)
+    assert.ok(zoneCenter(i).x > SPAWN.x + 10, `pad ${i} on the right`)
+    if (i % 3) assert.ok(zoneCenter(i).z < zoneCenter(i - 1).z, `pad ${i} north of pad ${i - 1}`)
+    if (i >= 3) assert.ok(padHeight(i) > padHeight(i - 3), `pad ${i} a tier up from pad ${i - 3}`)
   }
-  assert.ok(FOOD_HUT.x > SPAWN.x + 20 && FOOD_COUNTER.x > SPAWN.x + 15, 'the Food Shop on the right')
+  assert.ok(FOOD_HUT.x < SPAWN.x - 20 && FOOD_COUNTER.x < SPAWN.x - 15, 'the Food Shop on the left')
   for (const egg of EGG_STANDS) assert.ok(egg.z > SPAWN.z, `${egg.eggId} egg behind`)
   for (const board of LEADERBOARDS) assert.ok(board.z > SPAWN.z, `${board.id} board behind`)
   assert.ok(Math.abs(STATUE.x) > 15, 'the statue well clear of the gate')
-  // Every bench is reachable: off every wall, and nobody spawns on one.
+  // Every chair is reachable: off every wall, and nobody spawns on one.
   assert.equal(benchAt(SPAWN.x, SPAWN.z), -1)
-  for (let i = 0; i < ZONE_COUNT; i += 1) {
-    const seat = onBench(i)
-    assert.equal(benchAt(seat.x, seat.z), i)
-    for (const wall of STATIC_COLLIDERS) assert.ok(!(seat.x > wall.minX && seat.x < wall.maxX && seat.z > wall.minZ && seat.z < wall.maxZ), `bench ${i} inside a wall`)
+  for (const seat of SEATS) {
+    assert.equal(benchAt(seat.x, seat.z), seat.zone)
+    for (const wall of STATIC_COLLIDERS) assert.ok(!(seat.x > wall.minX && seat.x < wall.maxX && seat.z > wall.minZ && seat.z < wall.maxZ), `chair of pad ${seat.zone} inside a wall`)
   }
   // The counter is reachable, not inside the hut.
   for (const wall of STATIC_COLLIDERS) assert.ok(!(FOOD_COUNTER.x > wall.minX && FOOD_COUNTER.x < wall.maxX && FOOD_COUNTER.z > wall.minZ && FOOD_COUNTER.z < wall.maxZ), 'counter inside a wall')
-  // The straight walk from spawn up to the ROLL ZONE is clear: nothing solid in it.
+  // The straight walk from spawn up to the gate is clear: nothing solid in it.
   const overlaps = (a, b) => a.minX < b.maxX && a.maxX > b.minX && a.minZ < b.maxZ && a.maxZ > b.minZ
-  assert.ok(WALKWAY.minX <= SPAWN.x && WALKWAY.maxX >= SPAWN.x && WALKWAY.minZ <= PUSH_ZONE.minZ)
+  assert.ok(WALKWAY.minX <= SPAWN.x && WALKWAY.maxX >= SPAWN.x && WALKWAY.minZ <= GATE_Z)
   for (const wall of STATIC_COLLIDERS) assert.ok(!overlaps(wall, WALKWAY), `something solid on the walkway: ${JSON.stringify(wall)}`)
-  for (let i = 0; i < ZONE_COUNT; i += 1) assert.ok(!overlaps(zoneDeckRect(i), WALKWAY), `court ${i} on the walkway`)
+  for (let i = 0; i < ZONE_COUNT; i += 1) assert.ok(!overlaps(zoneDeckRect(i), WALKWAY), `pad ${i} on the walkway`)
+  // Back from the stages, you're in front of the gate, on the walkway.
+  assert.ok(STAGE_RETURN.z > GATE_Z && STAGE_RETURN.z < SPAWN.z)
 })

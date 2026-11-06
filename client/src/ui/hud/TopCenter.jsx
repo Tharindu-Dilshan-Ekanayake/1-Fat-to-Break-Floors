@@ -2,6 +2,8 @@ import { TUTORIAL } from '@shared/balance'
 import { isMaxLevel } from '@shared/logic'
 import { formatNumber } from '@shared/format'
 
+import { useEffect, useState } from 'react'
+
 import { useClearTop } from '../../bloxity/reserved'
 import { useGame } from '../../store/game'
 import StrokeText from '../StrokeText'
@@ -12,20 +14,20 @@ const touch = typeof window !== 'undefined' && (window.matchMedia?.('(pointer: c
 
 /**
  * What the guide tells a new player right now - its step, with the Fat to eat up to
- * where it asks for some, and how to start rolling when you're on the ROLL ZONE - until
- * the guide's done; after that, nothing. (Max level has its own call to rebirth, up top:
- * RebirthNotice.)
+ * where it asks for some, and what to do through the gate and down in the stages -
+ * until the guide's done; after that, nothing. (Max level has its own call to rebirth,
+ * up top: RebirthNotice.)
  */
 function useHint() {
   const step = useGame((s) => s.profile.tutorialStep)
   const fat = useGame((s) => Math.floor(s.profile.fat))
-  const atRollZone = useGame((s) => s.zone.pushZone)
+  const inYard = useGame((s) => s.zone.yard)
   const hungry = useGame((s) => !(s.profile.fat > 0))
   const current = TUTORIAL[step]
   if (!current) return null
-  if (atRollZone) {
-    if (hungry) return { key: 'hungry', text: 'Eat some food first - Fat is what you roll on!' }
-    return { key: 'roll', text: touch ? 'Hold the ROLL! button to roll down the hill!' : 'Hold E to roll down the hill!' }
+  if (inYard && current.event === 'floor') {
+    if (hungry) return { key: 'hungry', text: 'Eat some food first - your Fat is how hard you slam!' }
+    return { key: 'slam', text: 'Stand on the floor - you SLAM it! Break it to fall through!' }
   }
   if (current.fat && fat < current.fat) return { key: current.text, text: `${current.text} ${formatNumber(fat)}/${current.fat}` }
   return { key: current.text, text: current.text }
@@ -35,15 +37,23 @@ function useHint() {
  * The big hint under the level bar, as in the reference. A tutorial step stays up until
  * it's done; any other hint shows for about three seconds and fades (pp-hint), so it's
  * never in the way of playing. Keyed on the hint, so a new one starts it again. Paused
- * while the HUD is out of sight (rolling, a panel open), so a hint is never used up
- * unseen.
+ * while the HUD is out of sight (a panel open), so a hint is never used up unseen.
  */
 export function TopCenter() {
   const hint = useHint()
+  // Out of the way while a big banner is up (a floor broken, a pad paid): ~2.6 s.
+  const bannerId = useGame((s) => s.pushBanner?.id ?? 0)
+  const [doneId, setDoneId] = useState(0)
+  useEffect(() => {
+    if (!bannerId) return undefined
+    const timer = setTimeout(() => setDoneId(bannerId), 2600)
+    return () => clearTimeout(timer)
+  }, [bannerId])
+  const bannerUp = bannerId !== 0 && bannerId !== doneId
   const hidden = useGame((s) => s.pushing || s.panel !== null)
   const maxed = useGame((s) => isMaxLevel(s.profile))
   const clear = useClearTop(0.25, 0.75)
-  if (!hint) return null
+  if (!hint || bannerUp) return null
   // Below the MAX LEVEL call (RebirthNotice) when it's up, never on top of it.
   const below = maxed ? `calc(${clear}px + ${u(140)} + var(--notice-drop))` : `calc(${clear + 8}px + var(--notice-drop))`
 

@@ -5,11 +5,12 @@
  * Shared by client (display) and server (authority): both always agree on costs and
  * multipliers because they read the same table.
  *
- * The loop: eat food to get FAT (your belly grows with every bite), then curl up and
- * roll down the tape track like a ball. Every tape across it takes so much Fat to smash:
- * you burst through every one your Fat is enough for, each paying Coins, until you slam
- * into the first that's too strong and bounce off it. You keep your Fat - you come back
- * as big as you went - so buy better food with the Coins, eat more, and roll further.
+ * The loop: eat food to get FAT (your belly grows with every bite), then walk through the
+ * STAGE gate onto a floor and SLAM it: you jump up and come down belly first, and every
+ * slam knocks your Fat off the floor's HP. Break it and you fall into the room below,
+ * where a WINS pad pays out and takes you home - or walk on to the next stage's floor and
+ * slam your way deeper for a bigger pad. You keep your Fat, so buy better food with the
+ * Wins, eat more, and dive deeper. (Wins are the currency; in code they're `coins`.)
  */
 
 // --- Fat and levels ----------------------------------------------------------------
@@ -19,7 +20,7 @@ export const BASE_GAIN = 1
 /** Bites the server accepts per second, and how many can be banked for a burst. */
 export const MAX_BITES_PER_SECOND = 9
 export const BITE_BURST = 12
-/** Seconds between the bites you take automatically sat at a Food Court table. */
+/** Seconds between the bites you take automatically sat at a training pad's table. */
 export const TRAIN_INTERVAL = 0.8
 
 /**
@@ -51,41 +52,44 @@ export function walkSpeed(level = 1, rebirths = 0) {
   return Math.min(13.5, 10 + 0.1 * levels)
 }
 
-/** Skipping straight to a rebirth costs this many max-level runs' worth of Coins. */
+/** Skipping straight to a rebirth costs this many max-level dives' worth of Wins. */
 export const REBIRTH_SKIP_RUNS = 8
 
-// --- Food Courts ------------------------------------------------------------------
+// --- Training pads -----------------------------------------------------------------
 
 /**
- * The Food Courts along the west side, south to north in world.js order: a long table
- * on a raised deck. Sat at one you take a bite automatically every TRAIN_INTERVAL, and
- * every bite there (clicks too) is worth `mult` times more. `rebirths` = rebirths
- * needed; `product` = the SHOP pass that unlocks it instead.
+ * The training pads, in the training hall east of the runway (world.js), in order: a
+ * colourful deck with two dining tables, chairs all round. Sat at one you take a bite
+ * automatically every TRAIN_INTERVAL, and every bite there (clicks too) is worth `mult`
+ * times more. `rebirths` = rebirths needed; `product` = the SHOP pass that unlocks it
+ * instead.
  */
 export const TRAIN_ZONES = [
-  { id: 'snack', name: 'Snack Corner', mult: 1, rebirths: 0 },
-  { id: 'diner', name: 'Dinky Diner', mult: 2, rebirths: 1 },
-  { id: 'grill', name: 'Sizzle Grill', mult: 5, rebirths: 3 },
-  { id: 'bakery', name: 'Golden Bakery', mult: 8, rebirths: 5 },
-  { id: 'spicy', name: 'Spicy Kitchen', mult: 15, rebirths: 8 },
-  { id: 'frost', name: 'Frosty Parlor', mult: 30, product: 'zoneVeryOp', tag: 'VERY OP!' },
-  { id: 'galaxy', name: 'Galaxy Buffet', mult: 60, product: 'zoneBest', tag: 'BEST OVERALL!' },
+  { id: 'snack', name: 'Snack Pad', mult: 1.5, rebirths: 0 },
+  { id: 'diner', name: 'Diner Pad', mult: 2, rebirths: 1 },
+  { id: 'grill', name: 'Grill Pad', mult: 3, rebirths: 2 },
+  { id: 'bakery', name: 'Bakery Pad', mult: 5, rebirths: 3 },
+  { id: 'spicy', name: 'Spicy Pad', mult: 8, rebirths: 5 },
+  { id: 'sushi', name: 'Sushi Pad', mult: 12, rebirths: 7 },
+  { id: 'royal', name: 'Royal Pad', mult: 18, rebirths: 10 },
+  { id: 'frost', name: 'Frosty Pad', mult: 30, product: 'zoneVeryOp', tag: 'VERY OP!' },
+  { id: 'galaxy', name: 'Galaxy Pad', mult: 60, product: 'zoneBest', tag: 'BEST OVERALL!' },
 ]
 
 // --- Foods ------------------------------------------------------------------------
 
 /**
  * What you eat. `power` is the Fat each bite gives before multipliers; `cost` is in
- * Coins. Bought in order from the food market.
+ * Wins. Bought in order from the Food Shop.
  *
- * Prices go with the tapes (World 1's thirteen, then Future World's seven): from the
- * Taco on, each food costs two or three runs to the tape it goes with, paid in the Coins
- * those tapes give with the boosts a player has by then - so every new tape pays for
- * about one new food.
+ * Prices go with the stages (World 1's thirteen, then World 2's seven): from the Taco
+ * on, each food costs two or three dives to the stage it goes with, paid in the Wins
+ * that stage's pad gives with the boosts a player has by then - so every new stage pays
+ * for about one new food.
  */
 export const FOODS = [
   { id: 'cookie', name: 'Choco Cookie', power: 1, cost: 0 },
-  // Cheap enough for the Coins from your very first run.
+  // Cheap enough for the Wins from your very first dive.
   { id: 'fries', name: 'Crispy Fries', power: 2, cost: 3 },
   { id: 'donut', name: 'Sprinkle Donut', power: 3, cost: 20 },
   { id: 'hotdog', name: 'Hot Dog', power: 5, cost: 60 },
@@ -107,42 +111,40 @@ export const FOODS = [
   { id: 'dragonSteak', name: 'DRAGON STEAK', power: 3500, cost: 15000000000000, tag: 'OP' },
 ]
 
-// --- The tape track ---------------------------------------------------------------
+// --- The stages -------------------------------------------------------------------
 
 /**
- * The worlds, each with its own track down the valley: World 1, and Future World
- * through the portal (WORLD_PORTALS), which takes `coins` Coins to step into the first
+ * The worlds, each with its own stages under the STAGE gate: World 1, and World 2
+ * through the portal (WORLD_PORTALS), which takes `coins` Wins to step into the first
  * time.
  *
- * A world's stages run from the lobby down: each a slope `length` metres long with a
- * TAPE stretched across its end, and between one stage and the next a short flat
- * checkpoint SAFE_LENGTH metres long. (In code a stage's "top" is its far end, where
- * its tape is: the track's metres count from the start, whichever way it slopes.)
+ * A world's stages go down and down: stage i is a FLOOR (`hp` to break) with a room
+ * under it. Standing on a floor you slam it, each slam knocking your Fat off its HP;
+ * at 0 it shatters and you fall into its room. There, the WINS pad pays `wins` (times
+ * your Wins boosts) and takes you back to the lobby - or walk on to the next stage's
+ * floor at the far end and slam on. A floor's HP comes back when you leave the stages.
  *
- * Smashing stage i's tape takes `need` Fat: roll into it with at least that much and
- * you burst through - it pays its `coins` at once - and on you roll, faster each time;
- * with less, it stretches round your belly and throws you back, and the roll is over.
- * You keep your Fat either way. A stage's `coins` go with how hard it is: half its
- * `need`.
+ * `hp` is SLAMS_PER_FLOOR slams of the Fat a player has by the time they get there; a
+ * pad's `wins` is about what every stage above it would have paid, and a half more.
  */
 export const WORLDS = [
   {
     id: 'earth',
     name: 'World 1',
     stages: [
-      { id: 'grass', name: 'Grassy Hill', need: 20, length: 24, coins: 10 },
-      { id: 'sand', name: 'Sandy Path', need: 200, length: 36, coins: 100 },
-      { id: 'ice', name: 'Frozen Peak', need: 500, length: 44, coins: 250 },
-      { id: 'jungle', name: 'Jungle Ruins', need: 1000, length: 50, coins: 500 },
-      { id: 'volcano', name: 'Lava Volcano', need: 2000, length: 56, coins: 1000 },
-      { id: 'beach', name: 'Sunny Beach', need: 5000, length: 60, coins: 2500 },
-      { id: 'mushroom', name: 'Mushroom Forest', need: 10000, length: 60, coins: 5000 },
-      { id: 'candy', name: 'Candy Land', need: 20000, length: 64, coins: 10000 },
-      { id: 'spooky', name: 'Spooky Hollow', need: 50000, length: 64, coins: 25000 },
-      { id: 'swamp', name: 'Toxic Swamp', need: 100000, length: 68, coins: 50000 },
-      { id: 'crystal', name: 'Crystal Caves', need: 200000, length: 68, coins: 100000 },
-      { id: 'cloud', name: 'Cloud Kingdom', need: 500000, length: 72, coins: 250000 },
-      { id: 'moon', name: 'Moon Peak', need: 2000000, length: 72, coins: 1000000 },
+      { id: 'grass', name: 'Grassy', hp: 80, wins: 15 },
+      { id: 'sand', name: 'Sandy', hp: 800, wins: 160 },
+      { id: 'ice', name: 'Frozen', hp: 2000, wins: 550 },
+      { id: 'jungle', name: 'Jungle', hp: 4000, wins: 1300 },
+      { id: 'volcano', name: 'Lava', hp: 8000, wins: 2800 },
+      { id: 'beach', name: 'Beach', hp: 20000, wins: 6500 },
+      { id: 'mushroom', name: 'Mushroom', hp: 40000, wins: 14000 },
+      { id: 'candy', name: 'Candy', hp: 80000, wins: 29000 },
+      { id: 'spooky', name: 'Spooky', hp: 200000, wins: 67000 },
+      { id: 'swamp', name: 'Toxic', hp: 400000, wins: 140000 },
+      { id: 'crystal', name: 'Crystal', hp: 800000, wins: 290000 },
+      { id: 'cloud', name: 'Cloud', hp: 2000000, wins: 670000 },
+      { id: 'moon', name: 'Moon Core', hp: 8000000, wins: 2200000 },
     ],
   },
   {
@@ -150,31 +152,24 @@ export const WORLDS = [
     name: 'World 2',
     coins: 1400000,
     stages: [
-      { id: 'neon', name: 'Neon City', need: 5000000, length: 70, coins: 2500000 },
-      { id: 'cyber', name: 'Cyber Highway', need: 50000000, length: 70, coins: 25000000 },
-      { id: 'factory', name: 'Robot Factory', need: 500000000, length: 70, coins: 250000000 },
-      { id: 'station', name: 'Space Station', need: 5000000000, length: 70, coins: 2500000000 },
-      { id: 'mars', name: 'Mars Canyon', need: 50000000000, length: 70, coins: 25000000000 },
-      { id: 'asteroid', name: 'Asteroid Belt', need: 500000000000, length: 70, coins: 250000000000 },
-      { id: 'galaxy', name: 'Galaxy Core', need: 5000000000000, length: 70, coins: 2500000000000 },
+      { id: 'neon', name: 'Neon', hp: 20000000, wins: 3800000 },
+      { id: 'cyber', name: 'Cyber', hp: 200000000, wins: 41000000 },
+      { id: 'factory', name: 'Robot', hp: 2000000000, wins: 420000000 },
+      { id: 'station', name: 'Space', hp: 20000000000, wins: 4200000000 },
+      { id: 'mars', name: 'Mars', hp: 200000000000, wins: 42000000000 },
+      { id: 'asteroid', name: 'Asteroid', hp: 2000000000000, wins: 420000000000 },
+      { id: 'galaxy', name: 'Galaxy Core', hp: 20000000000000, wins: 4200000000000 },
     ],
   },
 ]
-/** The flat checkpoint past each tape, before the next slope. */
-export const SAFE_LENGTH = 8
-/** Where you stand when a run starts: this far before the foot of the first slope. */
-export const PUSH_START = -2.5
+/** How many slams a floor is meant to take, at the Fat you'd have by then (hp / 4 is that Fat). */
+export const SLAMS_PER_FLOOR = 4
 /**
- * How fast you roll (m/s): RUN_SPEED to start with, SPEED_PER_TAPE faster for every tape
- * smashed (downhill, gathering speed), up to TOP_SPEED.
+ * Slams the server accepts: one every SLAM_INTERVAL seconds, with SLAM_BURST banked (a
+ * jump-and-slam takes about half a second, so a fair player never hits the limit).
  */
-export const RUN_SPEED = 12
-export const SPEED_PER_TAPE = 1.2
-export const TOP_SPEED = 24
-/** The server's allowance for roll speed, a little over TOP_SPEED for lag. */
-export const RUN_SPEED_MAX = 27
-/** A run with no progress report for this long is ended by the server. */
-export const PUSH_TIMEOUT_MS = 30000
+export const SLAM_INTERVAL = 0.36
+export const SLAM_BURST = 3
 
 // --- Pets & eggs ------------------------------------------------------------------
 
@@ -215,7 +210,7 @@ export const PETS = {
 }
 
 /**
- * Eggs, bought with Coins. `pets` are [petId, weight] - weights are percentages and
+ * Eggs, bought with Wins. `pets` are [petId, weight] - weights are percentages and
  * sum to 100.
  */
 export const EGGS = {
@@ -237,7 +232,7 @@ export const POTION_DURATION_MS = 5 * 60 * 1000
 
 export const ITEMS = {
   potionFat: { name: 'x2 Fat Potion', kind: 'potion', boost: 'fat', durationMs: POTION_DURATION_MS },
-  potionCoins: { name: 'x2 Coins Potion', kind: 'potion', boost: 'coins', durationMs: POTION_DURATION_MS },
+  potionCoins: { name: 'x2 Wins Potion', kind: 'potion', boost: 'coins', durationMs: POTION_DURATION_MS },
   eggMeadow: { name: 'Grass Egg', kind: 'egg', egg: 'meadow' },
   eggSunset: { name: 'Sunset Egg', kind: 'egg', egg: 'sunset' },
   eggUnicorn: { name: 'Unicorn Egg', kind: 'egg', egg: 'unicorn' },
@@ -247,36 +242,36 @@ export const ITEMS = {
 /** 7-day cycle; day N unlocks N x 24h after the cycle started. */
 export const DAILY_INTERVAL_MS = 24 * 60 * 60 * 1000
 export const DAILY_REWARDS = [
-  { label: 'x2 Coins', icon: 'potionCoins', sub: '5m', grant: { item: 'potionCoins' } },
+  { label: 'x2 Wins', icon: 'potionCoins', sub: '5m', grant: { item: 'potionCoins' } },
   { label: 'Dragon', icon: 'pet:dragon', sub: 'x1', grant: { pet: 'dragon' } },
   { label: 'x2 Fat', icon: 'potionFat', sub: '5m', grant: { item: 'potionFat' } },
   { label: 'Unicorn Egg', icon: 'egg:unicorn', sub: 'x1', grant: { item: 'eggUnicorn' } },
   { label: 'x2 Fat', icon: 'potionFat', sub: '5m', grant: { item: 'potionFat' } },
-  { label: 'x2 Coins', icon: 'potionCoins', sub: '5m', grant: { item: 'potionCoins' } },
+  { label: 'x2 Wins', icon: 'potionCoins', sub: '5m', grant: { item: 'potionCoins' } },
   { label: 'Demon Egg', icon: 'egg:demon', sub: 'x1', grant: { item: 'eggDemon' } },
 ]
 
 /** Claimable once each per session, after this many minutes played. */
 export const PLAYTIME_REWARDS = [
-  { minutes: 5, label: '+50 Coins', icon: 'coin', grant: { coins: 50 } },
+  { minutes: 5, label: '+50 Wins', icon: 'coin', grant: { coins: 50 } },
   { minutes: 10, label: 'x2 Fat', icon: 'potionFat', grant: { item: 'potionFat' } },
   { minutes: 15, label: 'Grass Egg', icon: 'egg:meadow', grant: { item: 'eggMeadow' } },
-  { minutes: 30, label: 'x2 Coins', icon: 'potionCoins', grant: { item: 'potionCoins' } },
-  { minutes: 45, label: '+1K Coins', icon: 'coin', grant: { coins: 1000 } },
+  { minutes: 30, label: 'x2 Wins', icon: 'potionCoins', grant: { item: 'potionCoins' } },
+  { minutes: 45, label: '+1K Wins', icon: 'coin', grant: { coins: 1000 } },
   { minutes: 60, label: 'Sunset Egg', icon: 'egg:sunset', grant: { item: 'eggSunset' } },
 ]
 
 /** The stand by spawn: a pet the first time, a potion on later sessions. */
 export const FREE_REWARD = { firstTime: { pet: 'crab' }, repeat: { item: 'potionFat' } }
 
-/** Offline snacking: a quarter of your Food Court's rate, for up to 8 hours away. */
+/** Offline snacking: a quarter of your training pad's rate, for up to 8 hours away. */
 export const OFFLINE_RATE = 0.25
 export const OFFLINE_MAX_MS = 8 * 60 * 60 * 1000
 export const OFFLINE_MIN_MS = 60 * 1000
 
 /**
  * The world portals (placed by PORTALS in world.js): the world each takes you to (and
- * back from), its name, and the Coins needed to step through the first time. Stepping
+ * back from), its name, and the Wins needed to step through the first time. Stepping
  * through earns the badge of the same id.
  */
 export const WORLD_PORTALS = {
@@ -286,7 +281,7 @@ export const WORLD_PORTALS = {
 // --- Auras ------------------------------------------------------------------------
 
 /**
- * Auras: a glow round your character that multiplies the Coins you earn. Bought from
+ * Auras: a glow round your character that multiplies the Wins you earn. Bought from
  * the SHOP (`product`); the one you bought last is worn.
  */
 export const AURAS = {
@@ -300,25 +295,25 @@ export const AURAS = {
 // --- Shop -------------------------------------------------------------------------
 
 /**
- * The shop. Coins are the game's only currency: everything here, like foods and eggs,
+ * The shop. Wins are the game's only currency: everything here, like foods and eggs,
  * is bought with them. `pass` = permanent unlock; `consumable` = grants every time.
- * Priced like the foods: a few runs to the tape each belongs to.
+ * Priced like the foods: a few dives to the stage each belongs to.
  */
 export const SHOP = {
   fatX2: { name: 'x2 Fat', price: 3700, kind: 'pass' },
-  coinsX2: { name: 'x2 Coins', price: 73000, kind: 'pass' },
+  coinsX2: { name: 'x2 Wins', price: 73000, kind: 'pass' },
   fatX3: { name: 'x3 Fat', price: 230000000, kind: 'pass' },
-  coinsX3: { name: 'x3 Coins', price: 2500000000, kind: 'pass' },
+  coinsX3: { name: 'x3 Wins', price: 2500000000, kind: 'pass' },
   vip: { name: 'VIP', price: 75000000000, kind: 'pass' },
-  zoneVeryOp: { name: 'VERY OP! Food Court', price: 3300000, kind: 'pass' },
-  zoneBest: { name: 'BEST OVERALL! Food Court', price: 2500000000, kind: 'pass' },
+  zoneVeryOp: { name: 'VERY OP! Training Pad', price: 3300000, kind: 'pass' },
+  zoneBest: { name: 'BEST OVERALL! Training Pad', price: 2500000000, kind: 'pass' },
   auraLightning: { name: 'Lightning Aura', price: 6500, kind: 'pass', aura: 'lightning' },
   auraGalaxy: { name: 'Galaxy Aura', price: 7200000, kind: 'pass', aura: 'galaxy' },
   auraWater: { name: 'Water Aura', price: 1100000000000, kind: 'pass', aura: 'water' },
   auraFire: { name: 'Fire Aura', price: 20000000000000, kind: 'pass', aura: 'fire' },
   auraRainbow: { name: 'Rainbow Aura', price: 750000000000000, kind: 'pass', aura: 'rainbow' },
   potionsFat: { name: '3 Fat Potions', price: 4400, kind: 'consumable', grant: { item: 'potionFat', amount: 3 } },
-  potionsCoins: { name: '3 Coins Potions', price: 12000, kind: 'consumable', grant: { item: 'potionCoins', amount: 3 } },
+  potionsCoins: { name: '3 Wins Potions', price: 12000, kind: 'consumable', grant: { item: 'potionCoins', amount: 3 } },
   eggsSunset: { name: '3 Sunset Eggs', price: 30000, kind: 'consumable', grant: { item: 'eggSunset', amount: 3 } },
   eggsUnicorn: { name: '3 Unicorn Eggs', price: 1400000, kind: 'consumable', grant: { item: 'eggUnicorn', amount: 3 } },
   eggsDemon: { name: '3 Demon Eggs', price: 30000000000, kind: 'consumable', grant: { item: 'eggDemon', amount: 3 } },
@@ -330,8 +325,8 @@ export const SPHINX_STOCK_DEFAULT = 954
 
 /**
  * The three Fat packs under the level bar (green, orange, pink). They grow with you:
- * each gives `share` of the Fat your next level needs, for `runs` max runs' worth of
- * Coins at that Fat.
+ * each gives `share` of the Fat your next level needs, for `runs` dives' worth of Wins
+ * at that Fat.
  */
 export const FAT_PACKS = [
   { share: 1, runs: 0.6 },
@@ -343,14 +338,16 @@ export const FAT_PACKS = [
 
 /**
  * The guide for brand-new players - all of it: eat until you're fat enough for the first
- * tape (tap, or sit at the FREE Food Court's table), roll down and smash it, and spend
- * the Coins on better food. After that, no more guides. Each step completes when its
- * event fires (with at least `fat` Fat on you, where given: what the first tape needs).
+ * floor (tap, or sit at the FREE training pad), go through the STAGE gate and slam the
+ * floor until it breaks, claim the Wins pad down there, and spend the Wins on better
+ * food. After that, no more guides. Each step completes when its event fires (with at
+ * least `fat` Fat on you, where given).
  */
 export const TUTORIAL = [
   { text: 'Eat food to get FAT! Tap, or sit at the FREE table!', event: 'eat', target: 'zone0', fat: 20 },
-  { text: 'Roll down the hill and smash through the tape!', event: 'tape', target: 'push' },
-  { text: 'Buy the Crispy Fries with your Coins!', event: 'buyFood', target: 'foods' },
+  { text: 'Go through the STAGE gate and SLAM the floor!', event: 'floor', target: 'stage' },
+  { text: 'Step on the WINS pad to claim your Wins!', event: 'wins', target: 'pad' },
+  { text: 'Buy the Crispy Fries with your Wins!', event: 'buyFood', target: 'foods' },
 ]
 
 /**
@@ -362,14 +359,14 @@ export const TUTORIAL = [
 export const BOXITY_BOARDS = [
   { id: 'fat', label: 'Fattest', order: 'desc', mode: 'best', format: 'compact', reset: 'none' },
   { id: 'rebirths', label: 'Most Rebirths', order: 'desc', mode: 'best', format: 'number', reset: 'weekly' },
-  { id: 'coins', label: 'Most Coins', order: 'desc', mode: 'sum', format: 'compact', reset: 'weekly' },
+  { id: 'coins', label: 'Most Wins', order: 'desc', mode: 'sum', format: 'compact', reset: 'weekly' },
 ]
 
 export const BADGES = {
-  firstRun: { name: 'First Run' },
-  firstTape: { name: 'Tape Buster' },
+  firstRun: { name: 'First Slam' },
+  firstTape: { name: 'Floor Breaker' },
   firstRebirth: { name: 'First Rebirth' },
   firstPet: { name: 'Pet Owner' },
-  top: { name: 'Finished the Track' },
+  top: { name: 'Rock Bottom' },
   future: { name: 'Time Traveller' },
 }

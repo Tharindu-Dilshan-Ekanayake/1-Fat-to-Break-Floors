@@ -4,36 +4,36 @@ import { STYLE } from '../materials'
 
 /**
  * The kerbed lawns, laid out in the blocks the paths leave (see ground.js), framing them
- * in pairs rather than dotted about: either side of the walkway just north of spawn and
- * again further up between the streets (kerbs and all clear of WALKWAY), a strip each
- * side of the walk from spawn to the egg plaza, one between the walkway and the food
- * shop, one behind the egg stands in front of the leaderboards, one behind the Sphinx,
- * one by the waterfall, and ones behind the food shop and the champion's square. The ground map paints the grass (and a dirt patch on the bigger ones);
- * the kerbs are blocks in the world's one block set. All rects are on whole units, so
- * their edges fall on the ground map's texels.
+ * rather than dotted about: one beside the runway north of spawn, a strip each side of
+ * the walk from spawn to the egg plaza, one between the runway and the food shop, one
+ * behind the egg stands in front of the leaderboards, one behind the Sphinx, one by the
+ * waterfall, one either side of the runway further up, and ones behind the food shop
+ * and the champion's square. The ground map paints the grass (and a dirt patch on the
+ * bigger ones); the kerbs are blocks in the world's one block set. All rects are on whole
+ * units, so their edges fall on the ground map's texels.
  */
-export const LAWNS = [
-  // Either side of the walkway, just north of spawn.
-  { minX: -9, maxX: -6, minZ: -5, maxZ: 1 },
-  { minX: 6, maxX: 9, minZ: -5, maxZ: 1 },
-  // Between the cross street and the egg plaza, west and east of the walk.
-  { minX: -21, maxX: -5, minZ: 11, maxZ: 13 },
-  { minX: 11, maxX: 16, minZ: 11, maxZ: 13 },
-  // Behind the egg stands, in front of the leaderboards.
-  { minX: -18, maxX: 18, minZ: 25, maxZ: 28 },
-  // Behind the Sphinx, in the south-east corner.
-  { minX: 21, maxX: 44, minZ: 29, maxZ: 33 },
-  // By the waterfall, east of the portal.
-  { minX: 38, maxX: 44, minZ: -32, maxZ: -25 },
-  // Either side of the walkway between the two streets crossing it further up.
-  { minX: -21, maxX: -10, minZ: -21, maxZ: -17 },
-  { minX: 10, maxX: 21, minZ: -21, maxZ: -17 },
-  // Between the walkway and the food shop, south of the street to its counter.
-  { minX: 11, maxX: 19, minZ: -7, maxZ: -2 },
-  // Behind the food shop's hut, and behind the champion's square: trees as a backdrop.
-  { minX: 36, maxX: 44, minZ: -21, maxZ: -4 },
-  { minX: 33, maxX: 44, minZ: 1, maxZ: 11 },
-]
+export const LAWN = {
+  /** Beside the runway, west, just north of spawn. */
+  avenue: { minX: -13, maxX: -7, minZ: -6, maxZ: 8 },
+  /** Either side of the walk from spawn down to the egg plaza. */
+  stripW: { minX: -20, maxX: -6, minZ: 21, maxZ: 23 },
+  stripE: { minX: 13, maxX: 22, minZ: 21, maxZ: 23 },
+  /** Behind the egg stands, in front of the leaderboards. */
+  boards: { minX: -20, maxX: 20, minZ: 34, maxZ: 37 },
+  /** Behind the Sphinx, in the south-east corner. */
+  corner: { minX: 34, maxX: 56, minZ: 36, maxZ: 41 },
+  /** By the waterfall, north of the training hall. */
+  falls: { minX: 26, maxX: 38, minZ: -44, maxZ: -38 },
+  /** Either side of the runway further up, between the streets crossing it. */
+  upW: { minX: -20, maxX: -8, minZ: -25, maxZ: -18 },
+  upE: { minX: 14, maxX: 23, minZ: -42, maxZ: -38 },
+  /** Between the runway and the food shop, south of the street to its counter. */
+  shop: { minX: -28, maxX: -15, minZ: -8, maxZ: -3 },
+  /** Behind the food shop's hut, and behind the champion's square: trees as a backdrop. */
+  behindHut: { minX: -56, maxX: -47, minZ: -22, maxZ: -2 },
+  behindStatue: { minX: -56, maxX: -44, minZ: 10, maxZ: 26 },
+}
+export const LAWNS = Object.values(LAWN)
 
 /** Kerb height and width: low enough to step over. */
 const CURB_H = 0.16
