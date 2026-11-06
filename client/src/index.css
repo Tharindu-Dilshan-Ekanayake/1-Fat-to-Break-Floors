@@ -10,23 +10,32 @@
    * and floored so touch targets stay usable on phones.
    */
   --px: clamp(0.42px, min(100vw / 1920, 100vh / 1080), 1.4px);
+  /*
+   * The strip along the bottom a phone keeps for itself (the home bar), and where the
+   * touch buttons sit above it: EAT is 104px tall, so anything above it starts at
+   * --touch-top.
+   */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --touch-bottom: calc(12px + var(--safe-bottom));
+  --touch-top: calc(128px + var(--safe-bottom));
   /* Where the level bar and the Coins/Fat counters sit above the bottom edge. */
-  --levelbar-bottom: calc(var(--px) * 18);
-  --stats-bottom: calc(var(--px) * 120);
+  --levelbar-bottom: calc(var(--px) * 18 + var(--safe-bottom));
+  --stats-bottom: calc(var(--px) * 120 + var(--safe-bottom));
   /* How much further down the top-centre call-outs sit (below the top-right buttons). */
   --notice-drop: 0px;
 }
 
 /*
  * A phone held upright: the HUD laid out for a narrow 1180 x 1920 screen instead (smaller,
- * so nothing runs off the sides), with the level bar and the Coins/Fat counters lifted
- * above the EAT button and the joystick.
+ * so nothing runs off the sides), with the level bar and its Fat packs lifted clear above
+ * the EAT and jump buttons (which are sized in CSS pixels, so the lift is too), and the
+ * Coins/Fat counters above them.
  */
 @media (orientation: portrait) {
   :root {
     --px: clamp(0.25px, min(100vw / 1180, 100vh / 1920), 1.4px);
-    --levelbar-bottom: calc(var(--px) * 300);
-    --stats-bottom: calc(var(--px) * 520);
+    --levelbar-bottom: max(calc(var(--px) * 300 + var(--safe-bottom)), var(--touch-top));
+    --stats-bottom: calc(var(--levelbar-bottom) + var(--px) * 220);
     --notice-drop: calc(var(--px) * 120);
   }
 }
@@ -40,6 +49,18 @@ body,
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
   background: #a6d6fb;
+}
+/*
+ * On a phone, 100% can be taller than what's on screen (the browser's own bars cover
+ * the bottom of it), cutting off the buttons along the bottom: the dynamic viewport is
+ * just the part you can see.
+ */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
 }
 
 /* The R3F canvas fills its container; the HUD is absolutely positioned over it. */
