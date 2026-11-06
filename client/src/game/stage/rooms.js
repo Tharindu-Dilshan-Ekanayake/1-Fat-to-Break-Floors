@@ -133,10 +133,12 @@ export function buildRoom(i, { detail = true } = {}) {
   }
 
   // On to the next floor: glowing arrows down the clear west side, a hazard stripe where
-  // the slab starts, and a lit frame on the walls round it.
+  // the slab starts, and a lit frame on the walls round it. Each arrow is two bars whose
+  // inner ends meet in a tip to the north (-z, towards the next floor), like the runway's:
+  // a Y turn of +a swings a bar's east end north, so the west bar turns +a, the east -a.
   const next = themeOf(i + 1)
   for (let z = s - FLOOR_LEN - 2; z > n + FLOOR_LEN + 1.5; z -= 3.2) {
-    for (const side of [-1, 1]) b.addOn(-4 + side * 0.55, h, z, 1.5, 0.03, 0.42, '#ffffff', STYLE.GLOW, side * 0.75)
+    for (const side of [-1, 1]) b.addOn(-4 + side * 0.55, h, z, 1.5, 0.03, 0.42, '#ffffff', STYLE.GLOW, -side * 0.75)
   }
   span(b, -W + 0.26, W - 0.26, h, h + 0.03, n + FLOOR_LEN, n + FLOOR_LEN + 0.55, '#ffcc1a', STYLE.STRIPES)
   for (const side of [-1, 1]) {
